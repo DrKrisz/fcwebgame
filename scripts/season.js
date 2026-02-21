@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { rng } from './utils.js';
 import { renderSeasonResult } from './ui.js';
-import { TROPHY_NAMES } from './data.js';
+import { getDomesticCupName, getTrophyName } from './data.js';
 import { calcOvr } from './utils.js';
 
 export function goToSeason() {
@@ -21,26 +21,28 @@ export function buildSeasonEvent() {
   else if (ovr < 70) ovrImpact = 0.6;
   else if (ovr < 75) ovrImpact = 0.8;
   
-  const baseWinChance = Math.max(0.01, Math.pow((ovr-68)/90, 1.9)) + (prestige/500);
+  const baseWinChance = Math.max(0.008, Math.pow(Math.max(0, ovr - 72) / 100, 2.25)) + (prestige / 900);
   const winChance = baseWinChance * ovrImpact;
 
-  const leagueWon = Math.random() < winChance;
-  const cupWon    = Math.random() < Math.max(0.04, winChance * 0.45 + 0.01);
-  const clWon     = tier>=5 && Math.random() < Math.max(0.01, (ovr-75)/200 * (prestige/110)) * ovrImpact;
-  const potyWon   = ovr>=87 && Math.random()<0.12;
-  const gbWon     = state.G.pos==='striker' && ovr>=85 && Math.random()<0.12;
-  const csWon     = state.G.pos==='goalkeeper' && ovr>=84 && Math.random()<0.14;
-  const bdWon     = ovr>=95 && Math.random()<0.08;
+  const leagueWon = Math.random() < Math.max(0.01, winChance * (0.85 + tier * 0.04));
+  const cupWon    = Math.random() < Math.max(0.03, winChance * 0.30);
+  const clWon     = tier>=5 && Math.random() < Math.max(0.004, (ovr-82)/260 * (prestige/120)) * ovrImpact;
+  const potyWon   = ovr>=90 && Math.random()<0.07;
+  const gbWon     = state.G.pos==='striker' && ovr>=89 && Math.random()<0.08;
+  const csWon     = state.G.pos==='goalkeeper' && ovr>=88 && Math.random()<0.10;
+  const bdWon     = ovr>=96 && Math.random()<0.035;
 
   const trophies = [];
   let text = 'The season is over. ';
+  const leagueName = state.G.club?.league || 'League';
+  const domesticCupName = getDomesticCupName(leagueName);
 
   if (leagueWon && tier>=1) {
-    const tk = tier>=5?'league_top':tier>=3?'league_mid':'league_low';
+    const tk = `league:${leagueName}`;
     trophies.push(tk);
-    text += `<strong>Title winners!</strong> `;
+    text += `<strong>${leagueName} winners!</strong> `;
   }
-  if (cupWon && tier>=2) { trophies.push('cup'); text += `<strong>Cup lifted!</strong> `; }
+  if (cupWon && tier>=2) { trophies.push(`cup:${domesticCupName}`); text += `<strong>${domesticCupName} lifted!</strong> `; }
   if (clWon) { trophies.push('champions'); text += `<strong>Champions League!</strong> `; }
   if (potyWon) { trophies.push('poty'); text += `<strong>Player of the Year!</strong> `; }
   if (gbWon) { trophies.push('golden_boot'); text += `<strong>Golden Boot!</strong> `; }
@@ -50,7 +52,7 @@ export function buildSeasonEvent() {
   let goals, assists, saves, cleanSheets;
 
   // Scale performance based on OVR and age
-  const performanceMultiplier = Math.max(0.2, Math.min(1.5, (ovr - 50) / 30));
+  const performanceMultiplier = Math.max(0.2, Math.min(1.15, (ovr - 52) / 34));
   const ageMultiplier = state.G.age <= 27 ? 1.0 
     : state.G.age <= 32 ? 1.0
     : state.G.age <= 35 ? 0.85
@@ -61,19 +63,19 @@ export function buildSeasonEvent() {
   const totalMultiplier = performanceMultiplier * ageMultiplier;
 
   if (state.G.pos === 'striker') {
-    goals = Math.max(1, Math.round(rng(8,30) * totalMultiplier));
-    assists = Math.max(0, Math.round(rng(2,12) * totalMultiplier));
+    goals = Math.max(1, Math.round(rng(6,24) * totalMultiplier));
+    assists = Math.max(0, Math.round(rng(2,10) * totalMultiplier));
   } else if (state.G.pos === 'midfielder') {
-    goals = Math.max(0, Math.round(rng(4,16) * totalMultiplier));
-    assists = Math.max(1, Math.round(rng(6,20) * totalMultiplier));
+    goals = Math.max(0, Math.round(rng(3,13) * totalMultiplier));
+    assists = Math.max(1, Math.round(rng(5,16) * totalMultiplier));
   } else if (state.G.pos === 'goalkeeper') {
     goals = 0;
     assists = 0;
-    saves = Math.max(10, Math.round(rng(40, 120) * totalMultiplier));
-    cleanSheets = Math.min(38, Math.max(0, Math.floor((leagueWon ? rng(12,18) : rng(6,14)) * totalMultiplier)));
+    saves = Math.max(10, Math.round(rng(34, 96) * totalMultiplier));
+    cleanSheets = Math.min(34, Math.max(0, Math.floor((leagueWon ? rng(10,15) : rng(5,11)) * totalMultiplier)));
   } else {
-    goals = Math.max(0, Math.round(rng(0,5) * totalMultiplier));
-    assists = Math.max(0, Math.round(rng(1,8) * totalMultiplier));
+    goals = Math.max(0, Math.round(rng(0,4) * totalMultiplier));
+    assists = Math.max(0, Math.round(rng(1,7) * totalMultiplier));
   }
 
   if (!trophies.length) text += 'No silverware this time — keep pushing.';
@@ -111,21 +113,21 @@ export function buildBallonEvent(goals, trophyCount) {
 
 function calcBallonRank(goalsThisSeason, trophiesThisSeason) {
   const ovr = calcOvr();
-  if (ovr < 76) return null;
-  const score = (ovr - 76) * 5.5
-    + goalsThisSeason * 0.6
-    + trophiesThisSeason * 8
-    + state.G.reputation * 0.15;
+  if (ovr < 82) return null;
+  const score = (ovr - 82) * 4.2
+    + goalsThisSeason * 0.45
+    + trophiesThisSeason * 6
+    + state.G.reputation * 0.09;
   const rand = (Math.random() - 0.5) * 8;
   const adjusted = score + rand;
-  if (adjusted >= 95) return 1;
-  if (adjusted >= 75) return rng(2, 4);
-  if (adjusted >= 55) return rng(5, 12);
-  if (adjusted >= 35) return rng(13, 22);
-  if (adjusted >= 18) return rng(23, 30);
+  if (adjusted >= 120 && trophiesThisSeason >= 2 && goalsThisSeason >= 25) return 1;
+  if (adjusted >= 98) return rng(2, 4);
+  if (adjusted >= 76) return rng(5, 12);
+  if (adjusted >= 56) return rng(13, 22);
+  if (adjusted >= 38) return rng(23, 30);
   return null;
 }
 
 export function buildTrophyLabel(trophies) {
-  return trophies.length > 0 ? trophies.map(t => TROPHY_NAMES[t] || t).join(', ') : '—';
+  return trophies.length > 0 ? trophies.map(t => getTrophyName(t)).join(', ') : '—';
 }

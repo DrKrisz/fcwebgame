@@ -4,5 +4,12 @@ export const state = {
   currentChoices: [],
   transferOffers: [],
   rcOffer: null,
+  renewalOffer: null,
+  renewalContext: null,
+  renewalCheckSeason: null,
+  freeAgentRenewalCheckSeason: null,
   pendingSeason: null,
+  seasonAction: 1,
+  seasonActionsTotal: 10,
+  actionLocked: false,
 };

@@ -194,6 +194,7 @@
 .chart-bar-label{font-family:'JetBrains Mono',monospace;font-size:7px;color:rgba(245,240,232,.35);text-align:center;}
 
 .ovr-chart{background:var(--panel);border:1px solid var(--border);border-radius:6px;}
+.ovr-chart-svg{display:block;min-width:100%;}
 .season-table-wrap{background:var(--panel);border:1px solid var(--border);border-radius:6px;}
 .season-table{width:100%;border-collapse:collapse;font-size:11px;}
 .season-table th{background:rgba(212,160,23,.08);padding:8px;text-align:left;font-weight:700;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--gold);}

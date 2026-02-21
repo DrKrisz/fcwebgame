@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { TIERS } from './data.js';
-import { calcMarketValue, calcOvr, calcSalary, formatM, getTierOfClub, prestige2Stars, rng } from './utils.js';
+import { calcMarketValue, calcOvr, calcSalary, formatM, getContractYearRange, getTierOfClub, prestige2Stars, rollContractYears, rng } from './utils.js';
 
 export function buildTransferOffers(forFreeAgency=false) {
   const ovr = calcOvr();
@@ -49,12 +49,7 @@ export function buildTransferOffers(forFreeAgency=false) {
     if (!chosen) chosen=pool[pool.length-1];
     pool.splice(pool.indexOf(chosen),1);
     
-    // Age-based contract length
-    let contractYrs;
-    if (state.G.age >= 38) contractYrs = 1;
-    else if (state.G.age >= 35) contractYrs = rng(1,2);
-    else if (state.G.age >= 32) contractYrs = rng(2,3);
-    else contractYrs = Math.min(5, Math.max(1, Math.round(4 - (state.G.age - 24) * 0.15)));
+    const contractYrs = rollContractYears(state.G.age);
     
     const rcMult = 1.6 + (chosen.prestige/100)*1.2 + Math.random()*0.4;
     const rc = Math.max(mv*1.2, Math.round(mv*rcMult*10)/10);
@@ -87,7 +82,8 @@ export function renderClubOfferCardHTML(o, idx, isRC) {
 export function showReleaseClauseEvent(buyingClub) {
   const mv = calcMarketValue();
   const rc = state.G.contract.releaseClause;
-  const contractYrs = Math.min(5, Math.max(2, rng(3,5)));
+  const { minYears, maxYears } = getContractYearRange(state.G.age);
+  const contractYrs = rng(Math.max(1, minYears), Math.max(minYears, maxYears));
   const newRC = Math.round(mv * (2.2 + buyingClub.prestige/120) * 10)/10;
   const salary = Math.round(calcSalary(calcOvr()) * (1+buyingClub.prestige/110) / 1000)*1000;
 
@@ -105,7 +101,74 @@ export function showReleaseClauseEvent(buyingClub) {
     <button class="btn-decline" data-action="decline-rc">Stay — Force them to keep you (break their deal)</button>
   </div>`;
 
-  state.rcOffer = { club:buyingClub, contractYrs, releaseClause:newRC };
+  state.rcOffer = { club:buyingClub, contractYrs, releaseClause:newRC, salary };
+}
+
+export function buildRenewalOffer(forFreeAgent=false) {
+  const ovr = calcOvr();
+
+  let chance = forFreeAgent ? 0.5 : 0.42;
+  if (state.G.age <= 23) chance += 0.28;
+  else if (state.G.age <= 27) chance += 0.18;
+  else if (state.G.age >= 34) chance -= 0.12;
+  if (state.G.age >= 37) chance -= 0.22;
+
+  if (ovr >= 86) chance += 0.22;
+  else if (ovr >= 78) chance += 0.12;
+  else if (ovr < 68) chance -= 0.12;
+  if (ovr < 60) chance -= 0.18;
+
+  chance += (state.G.club.prestige - 75) / 250;
+  if (forFreeAgent && state.G.age >= 36) chance -= 0.1;
+  chance = Math.max(0.05, Math.min(0.92, chance));
+
+  if (Math.random() > chance) return null;
+
+  const contractYrs = rollContractYears(state.G.age);
+  const releaseClause = Math.round(calcMarketValue() * (2 + state.G.club.prestige/120) * 10)/10;
+  const salary = Math.round(calcSalary(ovr) * (1 + state.G.club.prestige/180) / 1000) * 1000;
+
+  return {
+    club: state.G.club,
+    contractYrs,
+    releaseClause,
+    salary,
+    forFreeAgent,
+  };
+}
+
+export function showContractTalk(offer, forFreeAgent=false) {
+  const area = document.getElementById('event-area');
+  const salaryStr = offer.salary >= 1000000
+    ? `€${(offer.salary/1000000).toFixed(2)}M/wk`
+    : `€${(offer.salary/1000).toFixed(0)}K/wk`;
+
+  area.innerHTML = `<div class="event-box ec-gold">
+    <div class="event-tag"><div class="event-dot"></div>📝 CONTRACT TALKS</div>
+    <div class="event-text">${forFreeAgent
+      ? `You are a <strong>free agent</strong>, but <strong>${state.G.club.name}</strong> wants you back.`
+      : `You are entering your <strong>final contract year</strong>. <strong>${state.G.club.name}</strong> opens renewal talks.`
+    }</div>
+    <div class="offer-card-wrap">
+      <div class="club-offer-card">
+        <div class="coc-league">${offer.club.country} ${offer.club.league}</div>
+        <div class="coc-name">${offer.club.name}</div>
+        <div class="coc-prestige">${prestige2Stars(offer.club.prestige)} &nbsp; Renewal Offer</div>
+        <div class="coc-details">
+          <div class="coc-row"><span class="coc-key">Contract</span><span class="coc-val gold">${offer.contractYrs} year${offer.contractYrs>1?'s':''}</span></div>
+          <div class="coc-row"><span class="coc-key">Salary</span><span class="coc-val green">${salaryStr}</span></div>
+          <div class="coc-row"><span class="coc-key">Release Clause</span><span class="coc-val">${formatM(offer.releaseClause)}</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="action-row action-row-space">
+      <button class="btn-accept btn-flex-sm" data-action="accept-renewal">🖊️ Sign New Deal</button>
+      <button class="btn-decline btn-flex-sm" data-action="decline-renewal">${forFreeAgent ? 'Test Free Agency' : 'Delay Talks'}</button>
+    </div>
+  </div>`;
+
+  state.renewalOffer = offer;
+  state.renewalContext = forFreeAgent ? 'free-agent' : 'expiring';
 }
 
 export function showFreeAgencyTransfer() {

@@ -1,6 +1,17 @@
 import { state } from './state.js';
-import { STAT_META, GK_STAT_META, TROPHY_NAMES, PHASES } from './data.js';
+import { STAT_META, GK_STAT_META, PHASES, getTrophyName } from './data.js';
 import { calcOvr, calcMarketValue, formatM, ordinal } from './utils.js';
+
+function formatCurrency(n) {
+  if (n >= 1000000000) return `€${(n / 1000000000).toFixed(2)}B`;
+  if (n >= 1000000) return `€${(n / 1000000).toFixed(2)}M`;
+  if (n >= 1000) return `€${Math.round(n / 1000)}K`;
+  return `€${Math.round(n)}`;
+}
+
+function formatWeeklySalary(salary) {
+  return `${formatCurrency(salary)}/wk`;
+}
 
 function getRankClass(rank) {
   if (rank === 1) return 'rank-1';
@@ -28,15 +39,17 @@ export function renderUI() {
   document.getElementById('d-league').textContent  = `${state.G.club.country} ${state.G.club.league}`;
   document.getElementById('d-age').textContent     = state.G.age;
   document.getElementById('d-ovr').textContent     = ovr;
-  document.getElementById('d-season').textContent  = `Season ${state.G.season}`;
+  const actionNow = Math.min(state.seasonAction || 1, state.seasonActionsTotal || 10);
+  const actionTotal = state.seasonActionsTotal || 10;
+  document.getElementById('d-season').textContent  = `Season ${state.G.season} · Action ${actionNow}/${actionTotal}`;
   document.getElementById('d-value').textContent   = formatM(mv);
 
   const yrs = state.G.contract.years;
   document.getElementById('d-years').textContent  = `${yrs} yr${yrs!==1?'s':''}`;
   document.getElementById('d-years').className    = 'cbar-val' + (yrs<=1?' contract-alert':'');
-  document.getElementById('d-rc').textContent     = formatM(state.G.contract.releaseClause);
-  document.getElementById('d-rep').textContent    = Math.round(state.G.reputation);
-  document.getElementById('d-academy').textContent = state.G.academy.name;
+  document.getElementById('d-payment').textContent = formatWeeklySalary(state.G.contract.salary || 0);
+  document.getElementById('d-earned').textContent  = formatCurrency(state.G.totalEarnings || 0);
+  document.getElementById('d-ga').textContent      = `${state.G.totalGoals || 0}/${state.G.totalAssists || 0}`;
 
   const fp = state.G.fitness;
   const fc = fp>70?'#4ade80':fp>40?'#facc15':'#f87171';
@@ -108,7 +121,7 @@ export function renderTrophies() {
   Object.entries(counts).forEach(([t,n]) => {
     const chip = document.createElement('span');
     chip.className='trophy-chip';
-    chip.textContent=`${TROPHY_NAMES[t]}${n>1?` ×${n}`:''}`;
+    chip.textContent=`${getTrophyName(t)}${n>1?` ×${n}`:''}`;
     inner.appendChild(chip);
   });
 }

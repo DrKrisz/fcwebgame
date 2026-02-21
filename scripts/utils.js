@@ -56,6 +56,23 @@ export function calcSalary(ovr) {
   return Math.max(500, weekly);
 }
 
+export function getContractYearRange(age) {
+  if (age <= 18) return { minYears: 6, maxYears: 10 };
+  if (age <= 21) return { minYears: 5, maxYears: 9 };
+  if (age <= 24) return { minYears: 4, maxYears: 8 };
+  if (age <= 27) return { minYears: 3, maxYears: 7 };
+  if (age <= 30) return { minYears: 2, maxYears: 6 };
+  if (age <= 33) return { minYears: 2, maxYears: 5 };
+  if (age <= 36) return { minYears: 1, maxYears: 3 };
+  if (age <= 39) return { minYears: 1, maxYears: 2 };
+  return { minYears: 1, maxYears: 1 };
+}
+
+export function rollContractYears(age) {
+  const { minYears, maxYears } = getContractYearRange(age);
+  return rng(minYears, maxYears);
+}
+
 export function prestige2Stars(p) {
   if (p >= 95) return '★★★★★';
   if (p >= 85) return '★★★★☆';

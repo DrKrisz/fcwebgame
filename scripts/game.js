@@ -117,6 +117,7 @@ export function startGame() {
       retired: false,
       totalGoals: 0,
       totalAssists: 0,
+      totalEarnings: 0,
       seasonsPlayed: 0,
       peakOvr: 0,
       peakClub: startClub.name,
@@ -125,7 +126,14 @@ export function startGame() {
       dopingBans: 0,
       bannedSeasons: 0,
       seasonHistory: [],
+      nationalCaps: 0,
+      nationalGoals: 0,
+      nationalTrophies: [],
     };
+
+    state.seasonAction = 1;
+    state.seasonActionsTotal = 10;
+    state.actionLocked = false;
 
     showScreen('game');
     renderUI();

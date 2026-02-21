@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { TROPHY_NAMES } from './data.js';
+import { getTrophyName } from './data.js';
 import { calcOvr, ordinal } from './utils.js';
 import { showScreen } from './ui.js';
 
@@ -78,6 +78,13 @@ function getRankClass(rank) {
   return 'rank-5';
 }
 
+function getSeasonOvr(sh) {
+  const raw = sh?.ovr ?? sh?.overall ?? sh?.rating;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(1, Math.min(99, Math.round(parsed)));
+}
+
 function renderRetirementChart() {
   const chartDiv = document.getElementById('ovrChart');
   chartDiv.innerHTML = '';
@@ -90,22 +97,101 @@ function renderRetirementChart() {
     return;
   }
 
-  const maxOvr = Math.max(99, Math.max(...state.G.seasonHistory.map(s=>s.ovr)));
-  const minOvr = Math.min(50, Math.min(...state.G.seasonHistory.map(s=>s.ovr)));
-  const range = maxOvr - minOvr || 10;
+  const seasonRows = state.G.seasonHistory.map(sh => ({ ...sh, _ovr: getSeasonOvr(sh) }));
+  const validRows = seasonRows.filter(sh => sh._ovr !== null);
 
-  state.G.seasonHistory.forEach((sh) => {
-    const heightPercent = ((sh.ovr - minOvr) / range * 100);
-    const bar = document.createElement('div');
-    bar.className = 'chart-bar';
-    bar.innerHTML = `
-      <div class="chart-bar-fill"></div>
-      <div class="chart-bar-label">S${sh.season}</div>
-    `;
-    bar.title = `Season ${sh.season} (Age ${sh.age}): OVR ${sh.ovr}`;
-    bar.querySelector('.chart-bar-fill').style.setProperty('--bar-height', `${Math.max(2, heightPercent)}%`);
-    chartDiv.appendChild(bar);
+  if (!validRows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-muted empty-center';
+    empty.textContent = 'No valid OVR data recorded.';
+    chartDiv.appendChild(empty);
+    return;
+  }
+
+  const ovrs = validRows.map(sh => sh._ovr);
+  const dataMin = Math.min(...ovrs);
+  const dataMax = Math.max(...ovrs);
+  const yMin = Math.max(1, dataMin - 2);
+  const yMax = Math.min(99, dataMax + 2);
+  const yRange = Math.max(4, yMax - yMin);
+
+  const chartHeight = 180;
+  const leftPad = 28;
+  const rightPad = 10;
+  const topPad = 10;
+  const bottomPad = 34;
+  const innerHeight = chartHeight - topPad - bottomPad;
+  const colWidth = 28;
+  const minWidth = 540;
+  const chartWidth = Math.max(minWidth, leftPad + rightPad + ((validRows.length - 1) * colWidth));
+
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNs, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${chartWidth} ${chartHeight}`);
+  svg.setAttribute('width', `${chartWidth}`);
+  svg.setAttribute('height', `${chartHeight}`);
+  svg.classList.add('ovr-chart-svg');
+
+  const toX = idx => leftPad + (idx * colWidth);
+  const toY = ovr => topPad + ((yMax - ovr) / yRange) * innerHeight;
+
+  const yTicks = [yMin, Math.round((yMin + yMax) / 2), yMax];
+  yTicks.forEach((tick) => {
+    const y = toY(tick);
+    const gridLine = document.createElementNS(svgNs, 'line');
+    gridLine.setAttribute('x1', `${leftPad}`);
+    gridLine.setAttribute('y1', `${y}`);
+    gridLine.setAttribute('x2', `${chartWidth - rightPad}`);
+    gridLine.setAttribute('y2', `${y}`);
+    gridLine.setAttribute('stroke', 'rgba(245,240,232,0.10)');
+    gridLine.setAttribute('stroke-width', '1');
+    svg.appendChild(gridLine);
+
+    const yLabel = document.createElementNS(svgNs, 'text');
+    yLabel.setAttribute('x', `${leftPad - 6}`);
+    yLabel.setAttribute('y', `${y + 4}`);
+    yLabel.setAttribute('text-anchor', 'end');
+    yLabel.setAttribute('fill', 'rgba(245,240,232,0.45)');
+    yLabel.setAttribute('font-size', '9');
+    yLabel.textContent = `${tick}`;
+    svg.appendChild(yLabel);
   });
+
+  const points = validRows.map((sh, idx) => `${toX(idx)},${toY(sh._ovr)}`).join(' ');
+  const polyline = document.createElementNS(svgNs, 'polyline');
+  polyline.setAttribute('points', points);
+  polyline.setAttribute('fill', 'none');
+  polyline.setAttribute('stroke', 'var(--gold)');
+  polyline.setAttribute('stroke-width', '2');
+  polyline.setAttribute('stroke-linejoin', 'round');
+  polyline.setAttribute('stroke-linecap', 'round');
+  svg.appendChild(polyline);
+
+  validRows.forEach((sh, idx) => {
+    const x = toX(idx);
+    const y = toY(sh._ovr);
+
+    const dot = document.createElementNS(svgNs, 'circle');
+    dot.setAttribute('cx', `${x}`);
+    dot.setAttribute('cy', `${y}`);
+    dot.setAttribute('r', '2.6');
+    dot.setAttribute('fill', 'var(--gold-l)');
+    const title = document.createElementNS(svgNs, 'title');
+    title.textContent = `Season ${sh.season} (Age ${sh.age}): OVR ${sh._ovr}`;
+    dot.appendChild(title);
+    svg.appendChild(dot);
+
+    const xLabel = document.createElementNS(svgNs, 'text');
+    xLabel.setAttribute('x', `${x}`);
+    xLabel.setAttribute('y', `${chartHeight - 12}`);
+    xLabel.setAttribute('text-anchor', 'middle');
+    xLabel.setAttribute('fill', 'rgba(245,240,232,0.42)');
+    xLabel.setAttribute('font-size', '8');
+    xLabel.textContent = `S${sh.season}`;
+    svg.appendChild(xLabel);
+  });
+
+  chartDiv.appendChild(svg);
 }
 
 function renderSeasonTable() {
@@ -119,11 +205,12 @@ function renderSeasonTable() {
   let bestSeasonIdx = 0;
   let bestScore = -Infinity;
   state.G.seasonHistory.forEach((sh, idx) => {
+    const seasonOvr = getSeasonOvr(sh) ?? 1;
     let score;
     if (state.G.pos === 'goalkeeper') {
-      score = sh.ovr * 3 + sh.saves * 0.15 + sh.cleanSheets * 2 + sh.trophies.length * 8;
+      score = seasonOvr * 3 + sh.saves * 0.15 + sh.cleanSheets * 2 + sh.trophies.length * 8;
     } else {
-      score = sh.ovr * 3 + sh.goals * 0.5 + sh.assists * 0.4 + sh.trophies.length * 8;
+      score = seasonOvr * 3 + sh.goals * 0.5 + sh.assists * 0.4 + sh.trophies.length * 8;
     }
     if (score > bestScore) {
       bestScore = score;
@@ -167,7 +254,8 @@ function renderSeasonTable() {
   `;
 
   state.G.seasonHistory.forEach((sh, idx) => {
-    const trophyStr = sh.trophies.length > 0 ? sh.trophies.map(t => TROPHY_NAMES[t] || t).join(', ') : '—';
+    const seasonOvr = getSeasonOvr(sh);
+    const trophyStr = sh.trophies.length > 0 ? sh.trophies.map(t => getTrophyName(t)).join(', ') : '—';
     const isPrime = idx === bestSeasonIdx;
     const rowClass = isPrime ? 'season-prime' : '';
     const primeLabel = isPrime ? '<span class="prime-label">✨ PRIME</span>' : '';
@@ -183,7 +271,7 @@ function renderSeasonTable() {
       <tr class="${rowClass}">
         <td><span class="season-val">${sh.season}</span>${primeLabel}</td>
         <td>${sh.age}</td>
-        <td><span class="season-val">${sh.ovr}</span></td>
+        <td><span class="season-val">${seasonOvr ?? '—'}</span></td>
         ${statsCells}
         <td>${sh.club}</td>
         <td class="trophy-cell">${trophyStr}</td>
@@ -238,8 +326,8 @@ export function downloadCareerData() {
   ];
 
   state.G.seasonHistory.forEach(sh => {
-    const trophy = sh.trophies.length > 0 ? sh.trophies.map(t => TROPHY_NAMES[t] || t).join('; ') : '';
-    csv.push([sh.season, sh.age, sh.ovr, sh.goals, sh.assists, sh.club, trophy]);
+    const trophy = sh.trophies.length > 0 ? sh.trophies.map(t => getTrophyName(t)).join('; ') : '';
+    csv.push([sh.season, sh.age, getSeasonOvr(sh) ?? '', sh.goals, sh.assists, sh.club, trophy]);
   });
 
   const csvContent = csv.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
