@@ -1,0 +1,32 @@
+.cursor-pointer{cursor:pointer;}
+
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.academy-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.action-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
+.action-row-space{margin-top:20px;}
+
+.btn-flex{flex:1;min-width:160px;}
+.btn-flex-sm{flex:1;min-width:140px;}
+
+.flex-1{flex:1;}
+.flex-2{flex:2;}
+
+.offer-card-wrap{max-width:280px;margin:0 auto 14px;}
+.btn-center-small{max-width:200px;margin:0 auto;}
+
+.retire-section{max-width:580px;margin:0 auto 24px;}
+.retire-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;max-width:600px;margin:0 auto 24px;}
+
+.chart-section{max-width:620px;margin:0 auto 32px;}
+.season-section{max-width:620px;margin:0 auto 32px;}
+.ovr-chart{display:flex;align-items:flex-end;justify-content:center;gap:4px;height:140px;padding:12px;overflow-x:auto;}
+.season-table-wrap{overflow:hidden;}
+
+@media(max-width:600px){
+  .stats-panel{grid-template-columns:repeat(3,1fr)!important;}
+  .top-bar{grid-template-columns:1fr;text-align:center;}
+  .right-col{text-align:center;}
+  .ret-grid{grid-template-columns:repeat(2,1fr);}
+  .academy-grid{grid-template-columns:repeat(2,1fr);}
+  .form-row{grid-template-columns:1fr;}
+}

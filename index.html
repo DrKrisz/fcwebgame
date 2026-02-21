@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE BEAUTIFUL GAME — Career Mode</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;700&family=Barlow:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/layout.css">
+<link rel="stylesheet" href="styles/components.css">
+</head>
+<body>
+<div id="app">
+
+<!-- ═════════════ INTRO ═════════════ -->
+<div id="screen-intro" class="screen active">
+  <div class="intro-badge">⚽ Football Life Simulator</div>
+  <div class="intro-title">THE<br><span>BEAUTIFUL</span><br>GAME</div>
+  <div class="intro-sub">Your career. Your choices. Your legacy.</div>
+  <div class="divider"></div>
+  <p class="intro-desc">Start as a raw 16-year-old. Train, transfer, resist temptation, survive injuries, and chase the Ballon d'Or — before time runs out.</p>
+
+  <div class="form-wrap">
+    <div>
+      <label class="form-label">Your Name</label>
+      <input id="inp-name" class="form-input" type="text" placeholder="e.g. Marco Silva…" maxlength="22" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <div>
+        <label class="form-label">Position</label>
+        <select id="inp-pos" class="form-input cursor-pointer">
+          <option value="" disabled selected>Choose…</option>
+          <option value="striker">⚡ Striker</option>
+          <option value="midfielder">🔄 Midfielder</option>
+          <option value="defender">🛡️ Defender</option>
+          <option value="goalkeeper">🧤 Goalkeeper</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Nationality (flavour)</label>
+        <select id="inp-nat" class="form-input cursor-pointer">
+          <option value="🏴">🏴 English</option>
+          <option value="🇪🇸">🇪🇸 Spanish</option>
+          <option value="🇧🇷">🇧🇷 Brazilian</option>
+          <option value="🇩🇪">🇩🇪 German</option>
+          <option value="🇦🇷">🇦🇷 Argentine</option>
+          <option value="🇫🇷">🇫🇷 French</option>
+          <option value="🇵🇹">🇵🇹 Portuguese</option>
+          <option value="🇳🇱">🇳🇱 Dutch</option>
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <label class="form-label form-label-block">Choose Your Youth Academy</label>
+      <div class="academy-grid" id="academy-grid"></div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn-primary btn-flex" data-action="randomize">🎲 RANDOMIZE</button>
+      <button class="btn-primary btn-flex" data-action="start">BEGIN YOUR JOURNEY</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════ GAME ═════════════ -->
+<div id="screen-game" class="screen">
+  <div class="top-bar">
+    <div>
+      <div class="player-name-d" id="d-name">—</div>
+      <div class="player-club-d" id="d-club">—</div>
+      <div class="player-league-d" id="d-league">—</div>
+    </div>
+    <div class="center-col">
+      <div class="age-num" id="d-age">16</div>
+      <div class="age-lbl">Age</div>
+      <div class="season-lbl" id="d-season">Season 1</div>
+    </div>
+    <div class="right-col">
+      <div class="ovr-num" id="d-ovr">55</div>
+      <div class="ovr-lbl">Overall</div>
+      <div class="value-d" id="d-value">€0M</div>
+    </div>
+  </div>
+
+  <div class="contract-bar">
+    <div class="cbar-item">
+      <span class="cbar-lbl">Contract</span>
+      <span class="cbar-val" id="d-years">3 yrs</span>
+    </div>
+    <div class="cbar-sep"></div>
+    <div class="cbar-item">
+      <span class="cbar-lbl">Release Clause</span>
+      <span class="cbar-val" id="d-rc">€50M</span>
+    </div>
+    <div class="cbar-sep"></div>
+    <div class="cbar-item">
+      <span class="cbar-lbl">Reputation</span>
+      <span class="cbar-val" id="d-rep">5</span>
+    </div>
+    <div class="cbar-sep"></div>
+    <div class="cbar-item">
+      <span class="cbar-lbl">Academy</span>
+      <span class="cbar-val" id="d-academy">—</span>
+    </div>
+  </div>
+
+  <div class="fitness-row">
+    <span class="fit-lbl">Fitness</span>
+    <div class="fit-track"><div class="fit-fill" id="fit-fill"></div></div>
+    <span class="fit-pct" id="fit-pct">100%</span>
+  </div>
+
+  <div class="quick-actions">
+    <button class="btn-quick" data-action="home" title="Return to home screen">🏠 Home</button>
+    <button class="btn-quick" data-action="reload" title="Restart the game">🔄 Restart</button>
+    <button class="btn-quick" data-action="fast-retire" title="Retire immediately">⏩ Fast Retire</button>
+  </div>
+
+  <div class="stats-panel" id="stats-panel"></div>
+
+  <div class="honours-row">
+    <div class="honours-box flex-2">
+      <div class="hon-title">🏆 Honours</div>
+      <div class="trophies-inner" id="trophies-inner">
+        <span class="no-trophy" id="no-trophy-msg">None yet — go win something.</span>
+      </div>
+    </div>
+    <div class="honours-box flex-1">
+      <div class="hon-title">🌟 Ballon d'Or</div>
+      <div id="ballon-display">
+        <div class="ballon-display rank-none"><span class="ballon-suffix ballon-empty">Season not started</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="phase-bar">
+    <span id="phase-icon">🌱</span>
+    <span id="phase-text">Youth Academy — The World Is Waiting</span>
+  </div>
+
+  <div id="event-area"></div>
+  <div class="log-strip" id="log-strip"></div>
+</div>
+
+<!-- ═════════════ RETIRE ═════════════ -->
+<div id="screen-retire" class="screen">
+  <div class="retire-title">FINAL WHISTLE</div>
+  <div class="retire-sub" id="ret-sub">A career to remember.</div>
+  <div class="ret-grid" id="ret-grid"></div>
+  <div class="retire-section">
+    <div class="hon-title hon-title-space">🌟 Ballon d'Or History</div>
+    <div class="ret-bd-list" id="ret-bd-list"></div>
+  </div>
+
+  <!-- Chart Section -->
+  <div id="chart-section" class="chart-section">
+    <div class="hon-title hon-title-space">📈 Overall Rating Over Time</div>
+    <div id="ovrChart" class="ovr-chart"></div>
+  </div>
+
+  <!-- Season Breakdown -->
+  <div id="season-section" class="season-section">
+    <div class="hon-title hon-title-space">📊 Season-by-Season</div>
+    <div id="seasonTable" class="season-table-wrap"></div>
+  </div>
+
+  <div class="career-label" id="ret-career-lbl">Career Rating</div>
+  <div class="stars" id="ret-stars">⭐⭐⭐☆☆</div>
+  <p class="retire-legacy" id="ret-legacy"></p>
+
+  <div class="retire-actions">
+    <button class="btn-primary btn-flex" data-action="download">📥 DOWNLOAD STATS</button>
+    <button class="btn-primary btn-flex" data-action="reload">PLAY AGAIN</button>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<script type="module" src="scripts/main.js"></script>
+</body>
+</html>
