@@ -19,7 +19,7 @@
 
 .chart-section{max-width:620px;margin:0 auto 32px;}
 .season-section{max-width:620px;margin:0 auto 32px;}
-.ovr-chart{display:block;min-height:180px;padding:10px;overflow-x:auto;overflow-y:hidden;}
+.ovr-chart{display:block;min-height:240px;padding:10px;overflow:hidden;}
 .season-table-wrap{overflow:hidden;}
 
 @media(max-width:600px){

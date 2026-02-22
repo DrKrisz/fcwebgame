@@ -151,12 +151,54 @@ export function renderPhase() {
 }
 
 export function addLog(msg, imp=false) {
-  const strip=document.getElementById('log-strip');
-  const el=document.createElement('div');
-  el.className='log-e'+(imp?' imp':'');
-  el.textContent=`[Age ${state.G.age}] ${msg}`;
-  strip.prepend(el);
-  while(strip.children.length>8) strip.lastChild.remove();
+  if (!Array.isArray(state.G.log)) state.G.log = [];
+  state.G.log.unshift({
+    age: state.G.age,
+    season: state.G.season,
+    msg,
+    imp: !!imp
+  });
+  renderLogStrip();
+}
+
+export function renderLogStrip() {
+  const strip = document.getElementById('log-strip');
+  if (!strip) return;
+  const logs = Array.isArray(state.G.log) ? state.G.log : [];
+  strip.innerHTML = logs.map(entry => {
+    const className = entry.imp ? 'log-e imp' : 'log-e';
+    return `<div class="${className}">[Age ${entry.age}] ${entry.msg}</div>`;
+  }).join('');
+}
+
+export function downloadCareerLogTxt() {
+  const logs = Array.isArray(state.G.log) ? [...state.G.log].reverse() : [];
+  const lines = [
+    `${state.G.name} - Career Log`,
+    `Position: ${state.G.pos}`,
+    `Academy: ${state.G.academy?.name || 'Unknown'}`,
+    ''
+  ];
+
+  if (!logs.length) {
+    lines.push('No log entries recorded.');
+  } else {
+    logs.forEach(entry => {
+      lines.push(`[Season ${entry.season} | Age ${entry.age}] ${entry.msg}`);
+    });
+  }
+
+  const textContent = lines.join('\n');
+  const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (state.G.name || 'player').replace(/[^a-z0-9-_ ]/gi, '').trim().replace(/\s+/g, '_') || 'player';
+  a.href = url;
+  a.download = `${safeName}_career_log.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function renderEvent(ev) {

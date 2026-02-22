@@ -195,6 +195,11 @@
 
 .ovr-chart{background:var(--panel);border:1px solid var(--border);border-radius:6px;}
 .ovr-chart-svg{display:block;min-width:100%;}
+.ovr-chart-host{min-height:210px;overflow-x:auto;overflow-y:hidden;padding:4px 2px 0;}
+.chart-controls{display:flex;flex-wrap:wrap;gap:8px;padding:2px 2px 10px;justify-content:center;}
+.chart-toggle{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:16px;padding:5px 10px;font-size:11px;color:var(--cream);cursor:pointer;user-select:none;}
+.chart-toggle input{accent-color:var(--gold);cursor:pointer;}
+.chart-swatch{width:10px;height:10px;border-radius:50%;background:var(--sw,var(--gold));display:inline-block;}
 .season-table-wrap{background:var(--panel);border:1px solid var(--border);border-radius:6px;}
 .season-table{width:100%;border-collapse:collapse;font-size:11px;}
 .season-table th{background:rgba(212,160,23,.08);padding:8px;text-align:left;font-weight:700;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--gold);}

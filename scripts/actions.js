@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { addLog, renderUI, renderRetirementChoice, setTrend, showScreen } from './ui.js';
+import { addLog, downloadCareerLogTxt, renderUI, renderRetirementChoice, setTrend, showScreen } from './ui.js';
 import { goToSeason } from './season.js';
 import { nextEvent } from './events.js';
 import { calcMarketValue, calcOvr, calcSalary, formatM, getTierOfClub, rng } from './utils.js';
@@ -18,6 +18,9 @@ export function handleAction(action, data) {
       break;
     case 'download':
       downloadCareerData();
+      break;
+    case 'download-log':
+      downloadCareerLogTxt();
       break;
     case 'reload':
       location.reload();
@@ -352,14 +355,30 @@ export function advanceSeason() {
   state.G.fitness = Math.min(100, state.G.fitness + 12);
   state.G.contract.years--;
 
+  const statKeys = ['pace', 'shooting', 'passing', 'dribbling', 'physical'];
+  const statSnapshot = statKeys.reduce((acc, key) => {
+    const val = Number(state.G.stats?.[key]);
+    acc[key] = Number.isFinite(val) ? Math.round(val) : null;
+    return acc;
+  }, {});
+  const validStatValues = statKeys
+    .map(key => statSnapshot[key])
+    .filter(val => Number.isFinite(val));
+  const avgStat = validStatValues.length
+    ? Math.round(validStatValues.reduce((sum, val) => sum + val, 0) / validStatValues.length)
+    : null;
+
   state.G.seasonHistory.push({
     season: state.G.season,
     age: state.G.age,
     ovr: calcOvr(),
+    marketValue: calcMarketValue(),
     goals: se.goals || 0,
     assists: se.assists || 0,
     saves: se.saves || 0,
     cleanSheets: se.cleanSheets || 0,
+    ...statSnapshot,
+    avgStat,
     club: state.G.club.name,
     trophies: se.trophies || []
   });
