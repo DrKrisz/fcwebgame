@@ -10,6 +10,22 @@ function findClubByName(name) {
   return TIERS.flat().find(c => c.name === name) || null;
 }
 
+function isClubBlocked(clubName) {
+  return Array.isArray(state.G.bannedFromClubs) && state.G.bannedFromClubs.includes(clubName);
+}
+
+function isLoanActive() {
+  const loan = state.G?.loan;
+  return !!loan?.active && Number(loan.seasonsLeft) > 0;
+}
+
+function getMarketplaceFrozenReason() {
+  if (!isLoanActive()) return '';
+  const loanClub = state.G?.loan?.toClub?.name || 'another club';
+  const seasonsLeft = Math.max(1, Number(state.G?.loan?.seasonsLeft) || 1);
+  return `Marketplace is frozen while you are on loan at ${loanClub} (${seasonsLeft} season${seasonsLeft !== 1 ? 's' : ''} left).`;
+}
+
 function weightedPick(pool) {
   if (!pool.length) return null;
   let r = Math.random() * pool.reduce((sum, item) => sum + item.weight, 0);
@@ -55,9 +71,49 @@ const APPLICATION_MODES = {
   },
 };
 
+const EXTENSION_PROPOSAL_MODES = {
+  balanced: {
+    key: 'balanced',
+    label: 'Balanced Ask',
+    salaryMultiplier: 1,
+    minutesShift: 0,
+    chanceBonus: 0,
+    desc: 'Standard salary and role expectations.',
+  },
+  teamFirst: {
+    key: 'teamFirst',
+    label: 'Team-First Offer',
+    salaryMultiplier: 0.86,
+    minutesShift: -520,
+    chanceBonus: 0.18,
+    desc: 'Lower wages and lighter role demand for higher acceptance.',
+  },
+  shortTerm: {
+    key: 'shortTerm',
+    label: 'Short-Term Deal',
+    salaryMultiplier: 0.93,
+    minutesShift: -240,
+    chanceBonus: 0.09,
+    desc: 'Shorter commitment with modest salary flexibility.',
+  },
+  starDemand: {
+    key: 'starDemand',
+    label: 'Star Demands',
+    salaryMultiplier: 1.13,
+    minutesShift: 450,
+    chanceBonus: -0.16,
+    desc: 'Higher wages and bigger role expectation.',
+  },
+};
+
 function getApplyMode() {
   const key = state.marketUi?.applyMode;
   return APPLICATION_MODES[key] || APPLICATION_MODES.balanced;
+}
+
+function getExtensionMode() {
+  const key = state.extensionUi?.mode;
+  return EXTENSION_PROPOSAL_MODES[key] || EXTENSION_PROPOSAL_MODES.balanced;
 }
 
 function getManagerConnection(clubName) {
@@ -121,8 +177,53 @@ function estimatePlayingTime(club, managerConnection) {
   return { role: 'Bench / Cup', minutes: rng(700, 1500), startChance: 0.31 };
 }
 
+function minutesToRole(minutes) {
+  if (minutes >= 3000) return 'Key Player';
+  if (minutes >= 2200) return 'Starter';
+  if (minutes >= 1400) return 'Rotation';
+  return 'Bench / Cup';
+}
+
 function formatSalary(salary) {
   return salary >= 1000000 ? `€${(salary / 1000000).toFixed(2)}M/wk` : `€${(salary / 1000).toFixed(0)}K/wk`;
+}
+
+function buildExtensionProposal(mode = EXTENSION_PROPOSAL_MODES.balanced) {
+  const club = state.G.club;
+  if (!club) return null;
+
+  const managerConnection = getManagerConnection(club.name);
+  const baselineRole = estimatePlayingTime(club, managerConnection);
+  const baseSalary = Math.round(calcSalary(calcOvr(), state.G.age) * (1 + club.prestige / 260) / 1000) * 1000;
+  const salary = Math.max(1000, Math.round(baseSalary * (mode.salaryMultiplier || 1) / 1000) * 1000);
+  const releaseClause = Math.round(calcMarketValue() * (2 + club.prestige / 120) * 10) / 10;
+  const baseYears = rollContractYears(state.G.age);
+  const contractYrs = mode.key === 'shortTerm' ? Math.max(1, Math.min(2, baseYears)) : baseYears;
+  const requestedMinutes = clamp((baselineRole.minutes || 1800) + (mode.minutesShift || 0), 450, 3800);
+  const requestedRole = minutesToRole(requestedMinutes);
+
+  let acceptanceChance = 0.26;
+  acceptanceChance += (calcOvr() - 68) * 0.012;
+  acceptanceChance += (state.G.reputation || 0) * 0.002;
+  acceptanceChance += ((club.prestige || 50) - 65) * 0.003;
+  acceptanceChance += (managerConnection - 45) * 0.004;
+  acceptanceChance += (1 - (mode.salaryMultiplier || 1)) * 0.9;
+  acceptanceChance += (-(mode.minutesShift || 0) / 1000) * 0.2;
+  acceptanceChance += mode.chanceBonus || 0;
+  acceptanceChance -= Math.max(0, (state.G.contract?.years || 0) - 1) * 0.09;
+  acceptanceChance = clamp(acceptanceChance, 0.04, 0.95);
+
+  return {
+    club,
+    modeKey: mode.key,
+    contractYrs,
+    releaseClause,
+    salary,
+    requestedRole,
+    requestedMinutes,
+    managerConnection,
+    acceptanceChance,
+  };
 }
 
 export function canClubFinanceMove(club, fee, ovr = calcOvr()) {
@@ -191,6 +292,7 @@ function getMarketPool() {
     .slice(minTier, maxTier + 1)
     .flat()
     .filter(c => c.name !== state.G.club?.name)
+    .filter(c => !isClubBlocked(c.name))
     .filter((club, idx, arr) => arr.findIndex(c => c.name === club.name) === idx);
 }
 
@@ -375,6 +477,15 @@ function renderApplyModeButtons(modeKey) {
     </button>`).join('')}</div>`;
 }
 
+function renderExtensionModeButtons(modeKey) {
+  const modes = Object.values(EXTENSION_PROPOSAL_MODES);
+  return `<div class="market-mode-grid">${modes.map(mode => `
+    <button class="market-mode-btn ${mode.key === modeKey ? 'active' : ''}" data-action="set-extension-mode" data-mode="${mode.key}">
+      <span class="market-mode-name">${mode.label}</span>
+      <span class="market-mode-meta">Wage ${Math.round(mode.salaryMultiplier * 100)}% · Role ${mode.minutesShift > 0 ? '+' : ''}${mode.minutesShift} mins</span>
+    </button>`).join('')}</div>`;
+}
+
 function renderIncomingDetailPanel(entry, index) {
   if (!entry) return '';
   return `<div class="market-detail-panel">
@@ -420,9 +531,46 @@ function renderTargetDetailPanel(target, index, mode) {
 }
 
 export function showMarketplaceBoard(message = '') {
+  const marketplaceFrozenReason = getMarketplaceFrozenReason();
+  if (marketplaceFrozenReason) {
+    const area = document.getElementById('event-area');
+    area.innerHTML = `<div class="event-box ec-season">
+      <div class="event-tag"><div class="event-dot"></div>📡 MARKETPLACE HUB</div>
+      <div class="event-text">${marketplaceFrozenReason}</div>
+      <div class="market-detail-panel">
+        <div class="market-detail-title">Loan Rule Active</div>
+        <div class="market-detail-text">You cannot send applications, accept marketplace offers, or negotiate extensions until the loan spell ends.</div>
+      </div>
+      ${message ? `<div class="market-flash">${message}</div>` : ''}
+      <button class="btn-decline" data-action="back-transfer-week">⬅ Back</button>
+    </div>`;
+    return;
+  }
+
   const board = getMarketplaceBoardForCurrentSeason();
   board.mode = getApplyMode();
   const renderTargets = getRenderableTargets(board);
+  const extensionMode = getExtensionMode();
+  const extensionProposal = buildExtensionProposal(extensionMode);
+  const extensionBlockedReason = state.pendingTransfer
+    ? `You already signed a pre-contract with ${state.pendingTransfer.club.name}.`
+    : (state.G.contract?.years || 0) <= 0
+    ? 'You are currently a free agent, so there is no active contract to extend.'
+    : '';
+  const currentSeason = Math.max(1, Number(state.G.season) || 1);
+  const nextLoanRequestSeason = Math.max(1, Number(state.G.loanRequestCooldownSeason) || 1);
+  const loanCooldownBlockedReason = currentSeason < nextLoanRequestSeason
+    ? `Loan request cooldown active: available again in ${nextLoanRequestSeason - currentSeason} season${(nextLoanRequestSeason - currentSeason) !== 1 ? 's' : ''}.`
+    : '';
+  const loanRequestBlockedReason = isLoanActive()
+    ? `Loan request unavailable: currently on loan at ${state.G.loan?.toClub?.name || 'another club'}.`
+    : (state.G.contract?.years || 0) <= 0
+    ? 'Loan request unavailable: you are a free agent without a parent-club contract.'
+    : state.pendingTransfer
+    ? `Loan request unavailable: transfer already agreed to ${state.pendingTransfer.club.name}.`
+    : loanCooldownBlockedReason
+    ? loanCooldownBlockedReason
+    : '';
 
   const selectedIncoming = Number.isInteger(state.marketUi?.incomingIndex) ? board.incoming[state.marketUi.incomingIndex] : null;
   const selectedTarget = Number.isInteger(state.marketUi?.targetIndex) ? renderTargets[state.marketUi.targetIndex] : null;
@@ -434,6 +582,31 @@ export function showMarketplaceBoard(message = '') {
     <div class="market-contract-bar">Contract left: <strong>${board.contractYears} year${board.contractYears !== 1 ? 's' : ''}</strong> · Release clause: <strong>${formatM(board.releaseClause)}</strong></div>
     <div class="market-section-title">Application Strategy</div>
     ${renderApplyModeButtons(board.mode.key)}
+    <div class="market-section-title">Offer Extension To ${state.G.club.name}</div>
+    ${renderExtensionModeButtons(extensionMode.key)}
+    <div class="market-detail-panel">
+      <div class="market-detail-title">Player Proposal Preview</div>
+      <div class="market-detail-grid">
+        <div><strong>Requested Salary:</strong> ${extensionProposal ? formatSalary(extensionProposal.salary) : '—'}</div>
+        <div><strong>Requested Contract:</strong> ${extensionProposal ? `${extensionProposal.contractYrs} year${extensionProposal.contractYrs !== 1 ? 's' : ''}` : '—'}</div>
+        <div><strong>Requested Role:</strong> ${extensionProposal ? extensionProposal.requestedRole : '—'}</div>
+        <div><strong>Requested Minutes:</strong> ${extensionProposal ? extensionProposal.requestedMinutes : '—'} / season</div>
+        <div><strong>Manager Link:</strong> ${extensionProposal ? `${extensionProposal.managerConnection}/100 (${getConnectionLabel(extensionProposal.managerConnection)})` : '—'}</div>
+        <div><strong>Est. Acceptance:</strong> ${extensionProposal ? `${Math.round(extensionProposal.acceptanceChance * 100)}%` : '—'}</div>
+      </div>
+      <div class="market-detail-text">${extensionMode.desc}</div>
+      ${extensionBlockedReason
+        ? `<div class="market-detail-text">${extensionBlockedReason}</div>`
+        : '<button class="btn-accept" data-action="send-extension-offer">📨 Send Extension Offer</button>'}
+    </div>
+    <div class="market-section-title">Request Loan Move</div>
+    <div class="market-detail-panel">
+      <div class="market-detail-title">Ask Club For 1–2 Year Loan</div>
+      <div class="market-detail-text">Useful if minutes are limited at a strong club. Younger players gain development boost; older established players can target extra money packages.</div>
+      ${loanRequestBlockedReason
+        ? `<div class="market-detail-text">${loanRequestBlockedReason}</div>`
+        : '<button class="btn-accept" data-action="request-market-loan">📄 Ask For Loan Out</button>'}
+    </div>
     ${message ? `<div class="market-flash">${message}</div>` : ''}
     <div class="market-section-title">Incoming Interest</div>
     <div class="transfer-grid">${board.incoming.length ? board.incoming.map((entry, idx) => renderIncomingCard(entry, idx)).join('') : '<div class="empty-market">No active interest yet — keep performing.</div>'}</div>
@@ -447,9 +620,76 @@ export function showMarketplaceBoard(message = '') {
 
 export function setMarketApplicationMode(modeKey) {
   if (!APPLICATION_MODES[modeKey]) return;
+  const marketplaceFrozenReason = getMarketplaceFrozenReason();
+  if (marketplaceFrozenReason) {
+    showMarketplaceBoard(marketplaceFrozenReason);
+    return;
+  }
   if (!state.marketUi) state.marketUi = { incomingIndex: null, targetIndex: null, applyMode: 'balanced' };
   state.marketUi.applyMode = modeKey;
   showMarketplaceBoard(`Application mode set: ${APPLICATION_MODES[modeKey].label}`);
+}
+
+export function setExtensionOfferMode(modeKey) {
+  if (!EXTENSION_PROPOSAL_MODES[modeKey]) return;
+  const marketplaceFrozenReason = getMarketplaceFrozenReason();
+  if (marketplaceFrozenReason) {
+    showMarketplaceBoard(marketplaceFrozenReason);
+    return;
+  }
+  if (!state.extensionUi) state.extensionUi = { mode: 'balanced', lastFeedback: '' };
+  state.extensionUi.mode = modeKey;
+  showMarketplaceBoard(`Extension mode set: ${EXTENSION_PROPOSAL_MODES[modeKey].label}`);
+}
+
+export function submitExtensionOffer() {
+  const marketplaceFrozenReason = getMarketplaceFrozenReason();
+  if (marketplaceFrozenReason) {
+    showMarketplaceBoard(marketplaceFrozenReason);
+    return;
+  }
+
+  const yearsLeft = state.G.contract?.years || 0;
+  if (yearsLeft <= 0) {
+    showMarketplaceBoard('You cannot extend because you are currently a free agent.');
+    return;
+  }
+
+  if (state.pendingTransfer?.club?.name) {
+    showMarketplaceBoard(`You already signed a pre-contract with ${state.pendingTransfer.club.name}.`);
+    return;
+  }
+
+  if (!state.extensionUi) state.extensionUi = { mode: 'balanced', lastFeedback: '' };
+  const mode = getExtensionMode();
+  const proposal = buildExtensionProposal(mode);
+  if (!proposal) {
+    showMarketplaceBoard('Could not prepare your extension offer.');
+    return;
+  }
+
+  const accepted = Math.random() < proposal.acceptanceChance;
+  if (accepted) {
+    state.pendingContract = {
+      years: proposal.contractYrs,
+      releaseClause: proposal.releaseClause,
+      salary: proposal.salary,
+    };
+    state.renewalOffer = null;
+    state.renewalContext = null;
+    adjustManagerConnection(state.G.club.name, 8);
+
+    const msg = `${state.G.club.name} accepted your proposal: ${proposal.contractYrs} year${proposal.contractYrs !== 1 ? 's' : ''}, ${formatSalary(proposal.salary)}, role ${proposal.requestedRole}. Starts next season.`;
+    state.extensionUi.lastFeedback = msg;
+    showMarketplaceBoard(msg);
+    return;
+  }
+
+  const relationshipHit = mode.key === 'starDemand' ? -5 : -2;
+  adjustManagerConnection(state.G.club.name, relationshipHit);
+  const msg = `${state.G.club.name} declined this proposal. Try again with lower wage and/or reduced playing-time demands.`;
+  state.extensionUi.lastFeedback = msg;
+  showMarketplaceBoard(msg);
 }
 
 export function clearMarketplaceFocus() {
@@ -474,6 +714,12 @@ export function viewMarketplaceTarget(index) {
 }
 
 export function applyToMarketClub(index) {
+  const marketplaceFrozenReason = getMarketplaceFrozenReason();
+  if (marketplaceFrozenReason) {
+    showMarketplaceBoard(marketplaceFrozenReason);
+    return;
+  }
+
   const board = getMarketplaceBoardForCurrentSeason();
   const renderTargets = getRenderableTargets(board);
   const target = renderTargets?.[index];
@@ -509,6 +755,7 @@ export function applyToMarketClub(index) {
 }
 
 export function acceptMarketInterest(index) {
+  if (isLoanActive()) return null;
   const entry = state.marketBoard?.incoming?.[index];
   if (!entry || !entry.offer) return null;
   return entry.offer;
@@ -589,6 +836,8 @@ export function resolveMarketplaceFeedbackAtSeasonEnd() {
 }
 
 export function showNextMarketplaceFeedback() {
+  if (isLoanActive()) return false;
+
   const next = state.marketFeedbackQueue?.[0];
   if (!next) return false;
 
@@ -610,6 +859,7 @@ export function showNextMarketplaceFeedback() {
 }
 
 export function consumeMarketFeedback(acceptOffer = false) {
+  if (acceptOffer && isLoanActive()) return null;
   const next = state.marketFeedbackQueue?.shift();
   if (!next) return null;
 
@@ -622,6 +872,7 @@ export function buildTransferOffers(forFreeAgency=false) {
   let numOffers = rng(2,3);
   const offers = [];
   const mv = calcMarketValue();
+  const restrictedPostBan = !!state.G.banFreeAgencyLock;
 
   let eligibleTiers;
   if (forFreeAgency && state.G.age >= 40) {
@@ -651,7 +902,14 @@ export function buildTransferOffers(forFreeAgency=false) {
       : TIERS.slice(state.G.clubTier, state.G.clubTier+2).flat();
   }
 
-  eligibleTiers = eligibleTiers.filter(c => c.name !== state.G.club.name);
+  if (forFreeAgency && restrictedPostBan) {
+    numOffers = rng(1, 2);
+    eligibleTiers = TIERS.slice(Math.max(0, state.G.clubTier - 2), state.G.clubTier + 1).flat();
+  }
+
+  eligibleTiers = eligibleTiers
+    .filter(c => c.name !== state.G.club.name)
+    .filter(c => !isClubBlocked(c.name));
   if (!eligibleTiers.length) return [];
 
   const marketNeed = forFreeAgency ? mv * 0.2 : mv * 1.1;
@@ -734,6 +992,9 @@ export function showReleaseClauseEvent(buyingClub) {
 }
 
 export function buildRenewalOffer(forFreeAgent=false) {
+  if (forFreeAgent && state.G.banFreeAgencyLock) return null;
+  if (state.G?.club?.name && isClubBlocked(state.G.club.name)) return null;
+
   const ovr = calcOvr();
 
   let chance = forFreeAgent ? 0.5 : 0.42;
@@ -803,17 +1064,21 @@ export function showContractTalk(offer, forFreeAgent=false) {
 export function showFreeAgencyTransfer() {
   const offers = buildTransferOffers(true);
   const ovr = calcOvr();
+  const restrictedPostBan = !!state.G.banFreeAgencyLock;
 
   if (!offers.length) {
     const area = document.getElementById('event-area');
     const msg = state.G.age >= 38
-      ? `At ${state.G.age} and OVR ${ovr}, no clubs are willing to take a chance on you. Your time has come.`
+      ? `At ${state.G.age} and OVR ${ovr}, no clubs are willing to take a chance on you right now.`
       : `Despite being available, no clubs have made an offer. Options are limited at your age and rating.`;
 
     area.innerHTML = `<div class="event-box ec-red">
       <div class="event-tag"><div class="event-dot"></div>🚪 NO OFFERS</div>
       <div class="event-text">${msg}</div>
-      <button class="btn-primary btn-center-small" data-action="retire">🌅 RETIRE</button>
+      <div class="action-row action-row-space">
+        <button class="btn-accept btn-flex-sm" data-action="skip-free-agency">⚽ Keep Playing</button>
+        <button class="btn-primary btn-flex-sm" data-action="retire">🌅 Retire Now</button>
+      </div>
     </div>`;
     return;
   }
@@ -821,14 +1086,16 @@ export function showFreeAgencyTransfer() {
   const area = document.getElementById('event-area');
   area.innerHTML = `<div class="event-box ec-green">
     <div class="event-tag"><div class="event-dot"></div>🔓 FREE AGENT — CONTRACT EXPIRED</div>
-    <div class="event-text">Your contract has expired. You\'re a <strong>free agent</strong>. ${
+    <div class="event-text">${restrictedPostBan
+      ? `Your suspension is over. You\'re a <strong>free agent</strong>, and only a few clubs are willing to take the risk.`
+      : `Your contract has expired. You\'re a <strong>free agent</strong>. ${
       state.G.age >= 36
       ? `At ${state.G.age}, ${offers.length} club${offers.length>1?'s':''} still interested. Final chance to play?`
       : `Multiple clubs are interested — choose your next chapter.`
-    }</div>
+    }`}</div>
     <div class="transfer-grid">${offers.map((o,i)=>renderClubOfferCardHTML(o,i,false)).join('')}</div>
-    <button class="btn-decline" data-action="open-marketplace">📡 Open Marketplace Hub</button>
     <button class="btn-decline" data-action="retire-early">Hang up the boots — retire now</button>
+    ${restrictedPostBan ? '' : '<button class="btn-decline" data-action="open-marketplace">📡 Open Marketplace Hub</button>'}
   </div>`;
 
   state.transferOffers = offers;
@@ -841,8 +1108,8 @@ export function renderTransferChoices(ev) {
     <div class="event-tag"><div class="event-dot"></div>✈️ TRANSFER WINDOW</div>
     <div class="event-text">Clubs are circling. Your agent has brought you <strong>${ev.offers.length} concrete offers</strong>. Where do you go next — or do you stay loyal?</div>
     <div class="transfer-grid">${cardsHTML}</div>
-    <button class="btn-decline" data-action="open-marketplace">📡 Open Marketplace Hub</button>
     <button class="btn-decline" data-action="stay-club">🏠 Stay at ${state.G.club.name}</button>
+    <button class="btn-decline" data-action="open-marketplace">📡 Open Marketplace Hub</button>
   </div>`;
   state.transferOffers = ev.offers;
 }

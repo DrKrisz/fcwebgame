@@ -11,14 +11,17 @@ function clamp(value, min, max) {
 function getLeagueDifficulty(leagueName) {
   const map = {
     'Premier League': 1.18,
-    'La Liga': 1.12,
-    'Serie A': 1.08,
-    'Bundesliga': 1.03,
-    'Ligue 1': 0.86,
+    'La Liga': 1.14,
+    'Serie A': 1.10,
+    'Bundesliga': 1.08,
+    'Ligue 1': 1.04,
     'Primeira Liga': 0.88,
     'Eredivisie': 0.90,
-    'EFL Championship': 0.98,
+    'EFL Championship': 0.96,
+    'Segunda División': 0.93,
+    'Serie B': 0.92,
     '2. Bundesliga': 0.95,
+    'Ligue 2': 0.90,
   };
   return map[leagueName] || 1.0;
 }
@@ -33,7 +36,24 @@ function getDomesticDominanceBoost(leagueName, prestige) {
 
 export function goToSeason() {
   const se = buildSeasonEvent();
-  renderSeasonResult(se, buildSeasonChips(se), buildBallonEvent(se.goals, se.trophies.length));
+  renderSeasonResult(se, buildSeasonChips(se), buildBallonEvent(se));
+}
+
+export function buildBanSeasonEvent(seasonsRemainingBeforeAdvance) {
+  const yearsLeft = Math.max(0, Number(seasonsRemainingBeforeAdvance) - 1);
+  const yearLabel = yearsLeft === 1 ? '1 season remains' : `${yearsLeft} seasons remain`;
+  return {
+    title: 'DOPING BAN — SUSPENDED',
+    text: `You are suspended and cannot play official matches this season. Your contract was terminated — you are currently a <strong>free agent due to ban</strong>. ${yearLabel} on your ban after this year. Stats: <strong>0 goals, 0 assists.</strong>`,
+    seasonType: 'doping-ban',
+    banLabel: 'Doping ban',
+    ballonIneligibleReason: 'doping-ban',
+    trophies: [],
+    goals: 0,
+    assists: 0,
+    saves: 0,
+    cleanSheets: 0,
+  };
 }
 
 export function buildSeasonEvent() {
@@ -152,25 +172,64 @@ export function buildSeasonChips(se) {
   return chips;
 }
 
-export function buildBallonEvent(goals, trophyCount) {
-  const rank = calcBallonRank(goals, trophyCount);
+export function buildBallonEvent(seasonStats) {
+  const rank = calcBallonRank(seasonStats);
   return { rank };
 }
 
-function calcBallonRank(goalsThisSeason, trophiesThisSeason) {
+function getBallonTrophyScore(trophies) {
+  return trophies.reduce((sum, trophy) => {
+    if (trophy === 'champions') return sum + 34;
+    if (trophy.startsWith('league:')) return sum + 20;
+    if (trophy.startsWith('cup:')) return sum + 12;
+    if (trophy === 'poty') return sum + 12;
+    if (trophy === 'golden_boot') return sum + 10;
+    if (trophy === 'clean_sheet') return sum + 10;
+    if (trophy === 'ballon') return sum + 30;
+    return sum + 4;
+  }, 0);
+}
+
+function calcBallonRank(seasonStats) {
   const ovr = calcOvr();
   if (ovr < 82) return null;
-  const score = (ovr - 82) * 4.2
-    + goalsThisSeason * 0.45
-    + trophiesThisSeason * 6
-    + state.G.reputation * 0.09;
-  const rand = (Math.random() - 0.5) * 8;
+
+  const goalsThisSeason = seasonStats?.goals || 0;
+  const assistsThisSeason = seasonStats?.assists || 0;
+  const trophiesThisSeason = seasonStats?.trophies || [];
+  const trophyScore = getBallonTrophyScore(trophiesThisSeason);
+  const leagueName = state.G.club?.league || '';
+  const leagueBonus = leagueName === 'Premier League' ? 5
+    : leagueName === 'La Liga' ? 4
+    : leagueName === 'Serie A' ? 3
+    : leagueName === 'Bundesliga' ? 2
+    : leagueName === 'Ligue 1' ? 2
+    : 0;
+
+  const goalWeight = state.G.pos === 'striker' ? 1.05 : state.G.pos === 'midfielder' ? 0.75 : 0.2;
+  const assistWeight = state.G.pos === 'midfielder' ? 0.5 : state.G.pos === 'striker' ? 0.25 : 0.05;
+
+  const score = (ovr - 82) * 3.5
+    + goalsThisSeason * goalWeight
+    + assistsThisSeason * assistWeight
+    + trophyScore
+    + state.G.reputation * 0.1
+    + leagueBonus;
+
+  const rand = (Math.random() - 0.5) * 12;
   const adjusted = score + rand;
-  if (adjusted >= 120 && trophiesThisSeason >= 2 && goalsThisSeason >= 25) return 1;
-  if (adjusted >= 98) return rng(2, 4);
-  if (adjusted >= 76) return rng(5, 12);
-  if (adjusted >= 56) return rng(13, 22);
-  if (adjusted >= 38) return rng(23, 30);
+
+  const hasLeague = trophiesThisSeason.some(t => t.startsWith('league:'));
+  const hasCup = trophiesThisSeason.some(t => t.startsWith('cup:'));
+  const hasChampions = trophiesThisSeason.includes('champions');
+  const hasTreble = hasLeague && hasCup && hasChampions;
+
+  if (hasTreble && state.G.pos === 'striker' && goalsThisSeason >= 18 && adjusted >= 94) return rng(1, 6);
+  if (adjusted >= 124 && goalsThisSeason >= 24) return 1;
+  if (adjusted >= 106) return rng(2, 4);
+  if (adjusted >= 88) return rng(5, 12);
+  if (adjusted >= 70) return rng(13, 22);
+  if (adjusted >= 54) return rng(23, 30);
   return null;
 }
 

@@ -38,10 +38,21 @@ export function renderUI() {
 
   document.getElementById('d-name').textContent    = `${state.G.nat} ${state.G.name}`;
   const pendingClub = state.pendingTransfer?.club?.name;
+  const isFreeAgent = (state.G.contract?.years || 0) <= 0;
+  const loan = state.G.loan;
+  const loanActive = !!loan?.active && Number(loan.seasonsLeft) > 0 && !!loan.toClub;
   document.getElementById('d-club').textContent    = pendingClub
     ? `${state.G.club.name} → ${pendingClub} (next season)`
+    : loanActive
+    ? `${loan.toClub.name} (Loan from ${loan.fromClub?.name || 'Parent club'})`
+    : isFreeAgent
+    ? `Free Agent (ex ${state.G.club.name})`
     : state.G.club.name;
-  document.getElementById('d-league').textContent  = `${state.G.club.country} ${state.G.club.league}`;
+  document.getElementById('d-league').textContent  = isFreeAgent
+    ? 'No active club contract'
+    : loanActive
+    ? `${loan.toClub.country} ${loan.toClub.league}`
+    : `${state.G.club.country} ${state.G.club.league}`;
   document.getElementById('d-age').textContent     = state.G.age;
   document.getElementById('d-ovr').textContent     = ovr;
   const actionNow = Math.min(state.seasonAction || 1, state.seasonActionsTotal || 10);
@@ -49,8 +60,11 @@ export function renderUI() {
   document.getElementById('d-season').textContent  = `Season ${state.G.season} · Action ${actionNow}/${actionTotal}`;
   document.getElementById('d-value').textContent   = formatM(mv);
 
-  const yrs = state.G.contract.years;
-  document.getElementById('d-years').textContent  = `${yrs} yr${yrs!==1?'s':''}`;
+  const yrs = Math.max(0, state.G.contract.years || 0);
+  const loanSuffix = loanActive
+    ? ` · Loan ${loan.seasonsLeft} season${loan.seasonsLeft !== 1 ? 's' : ''}`
+    : '';
+  document.getElementById('d-years').textContent  = `${yrs} yr${yrs!==1?'s':''}${loanSuffix}`;
   document.getElementById('d-years').className    = 'cbar-val' + (yrs<=1?' contract-alert':'');
   document.getElementById('d-payment').textContent = formatWeeklySalary(state.G.contract.salary || 0);
   document.getElementById('d-earned').textContent  = formatCurrency(state.G.totalEarnings || 0);
@@ -64,10 +78,45 @@ export function renderUI() {
   document.getElementById('fit-pct').textContent  = `${fp}%`;
   document.getElementById('fit-pct').style.color  = fc;
 
+  renderActiveBoosts();
   renderStats();
   renderTrophies();
   renderPhase();
   renderBallonLive();
+}
+
+function renderActiveBoosts() {
+  const panel = document.getElementById('boost-panel');
+  if (!panel) return;
+
+  const boosts = [];
+  const loan = state.G?.loan;
+  const loanActive = !!loan?.active && Number(loan.seasonsLeft) > 0 && !!loan.toClub;
+
+  if (loanActive && Number(loan.growthMultiplier) > 1) {
+    const pct = Math.round((Number(loan.growthMultiplier) - 1) * 100);
+    const src = loan.source === 'market-request'
+      ? 'Requested loan move'
+      : loan.source === 'forced-youth'
+      ? 'Club youth loan decision'
+      : loan.source === 'help-loan'
+      ? 'Loan help request'
+      : 'Loan move';
+    boosts.push(`📈 +${pct}% stat growth · ${loan.toClub.name} · ${src} · ${loan.seasonsLeft} season${loan.seasonsLeft !== 1 ? 's' : ''} left`);
+  }
+
+  const signingBoostSeasons = Math.max(0, Number(state.G?.postLoanSigningBoostSeasons) || 0);
+  const signingBoostMultiplier = Math.max(1, Number(state.G?.postLoanSigningBoostMultiplier) || 1);
+  if (signingBoostSeasons > 0 && signingBoostMultiplier > 1) {
+    const pct = Math.round((signingBoostMultiplier - 1) * 100);
+    boosts.push(`✨ +${pct}% stat growth · Permanent loan-signing development plan · ${signingBoostSeasons} season${signingBoostSeasons !== 1 ? 's' : ''} left`);
+  }
+
+  panel.innerHTML = `<div class="boost-title">Active Boosts</div>
+    ${boosts.length
+      ? `<div class="boost-list">${boosts.map(text => `<span class="boost-chip">${text}</span>`).join('')}</div>`
+      : '<div class="boost-empty">No active boosts right now.</div>'
+    }`;
 }
 
 export function renderStats() {
@@ -279,6 +328,12 @@ export function renderBallonLive() {
     bd.innerHTML=`<div class="ballon-display rank-none"><span class="ballon-suffix ballon-empty">Season not started</span></div>`;
     return;
   }
+
+  if (last.ineligibleReason === 'doping-ban') {
+    bd.innerHTML=`<div class="ballon-display rank-none"><span class="ballon-suffix ballon-empty">Ineligible (doping ban)</span></div>`;
+    return;
+  }
+
   const rankClass = getRankClass(last.rank);
   const rankStr = last.rank ? ordinal(last.rank) : 'Not ranked';
   bd.innerHTML=`<div class="ballon-display ${rankClass}">
@@ -372,7 +427,9 @@ export function renderSeasonResult(se, chips=[], bd=null, isBan=false) {
 
   let ballonHTML = '';
   if (bd) {
-    if (bd.rank) {
+    if (bd.reason === 'doping-ban') {
+      ballonHTML = `<div class="ballon-reveal"><div class="br-icon">⛔</div><div><div class="br-label">Ballon d'Or</div><div class="br-none">Ineligible this season due to doping ban.</div></div></div>`;
+    } else if (bd.rank) {
       const rankClass = getRankClass(bd.rank);
       ballonHTML = `<div class="ballon-reveal ${rankClass}">
         <div class="br-icon">${bd.rank===1?'🏆':'🌟'}</div>

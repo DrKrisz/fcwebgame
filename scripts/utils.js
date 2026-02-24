@@ -32,7 +32,26 @@ export function calcMarketValue() {
     ? Math.pow((age-15)/10, 1.2)
     : Math.max(0.05, 1-(age-25)*0.055);
   const ovrFactor = Math.pow(Math.max(0, ovr-50)/49, 2.1);
-  return Math.max(0.3, Math.round(ovrFactor * ageFactor * 260 * 10)/10);
+  const baseValue = Math.max(0.3, Math.round(ovrFactor * ageFactor * 260 * 10)/10);
+
+  if ((state.G?.bannedSeasons || 0) > 0) return 0;
+
+  const isPostBanFreeAgentLock = !!state.G?.banFreeAgencyLock && ((state.G?.contract?.years || 0) <= 0);
+  if (isPostBanFreeAgentLock) return 0.1;
+
+  const recoverySeasons = Math.max(0, Number(state.G?.postBanValueRecoverySeasons) || 0);
+  if (recoverySeasons > 0) {
+    const recoveryMultiplierBySeasonsLeft = {
+      4: 0.18,
+      3: 0.26,
+      2: 0.36,
+      1: 0.5,
+    };
+    const multiplier = recoveryMultiplierBySeasonsLeft[recoverySeasons] || 0.55;
+    return Math.max(0.1, Math.round(baseValue * multiplier * 10) / 10);
+  }
+
+  return baseValue;
 }
 
 export function formatM(m) {

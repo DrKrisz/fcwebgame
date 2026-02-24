@@ -53,7 +53,7 @@ export function retire() {
     bdList.innerHTML=state.G.ballonHistory.map(h=>`
       <div class="ret-bd-row">
         <span>Season ${h.season} (Age ${h.age}) <span class="ret-bd-club">(${h.club})</span></span>
-        <span class="rank-text ${getRankClass(h.rank)}">${h.rank?ordinal(h.rank)+' place':'Not ranked'}</span>
+        <span class="rank-text ${getRankClass(h.rank)}">${h.ineligibleReason==='doping-ban'?'Ineligible (ban)':h.rank?ordinal(h.rank)+' place':'Not ranked'}</span>
       </div>`).join('');
   }
 
@@ -421,6 +421,7 @@ function renderSeasonTable() {
         <th>Saves</th>
         <th>Clean Sheets</th>
         <th>Club</th>
+        <th>Status</th>
         <th>Trophies</th>
       </tr>
     `;
@@ -434,6 +435,7 @@ function renderSeasonTable() {
         <th>Goals</th>
         <th>Assists</th>
         <th>Club</th>
+        <th>Status</th>
         <th>Trophies</th>
       </tr>
     `;
@@ -453,6 +455,11 @@ function renderSeasonTable() {
     const seasonWorthM = Number.isFinite(storedWorth) ? storedWorth : calcSeasonMarketValue(sh);
     const seasonWorth = seasonWorthM !== null ? formatM(seasonWorthM) : '—';
     const trophyStr = sh.trophies.length > 0 ? sh.trophies.map(t => getTrophyName(t)).join(', ') : '—';
+    const seasonStatus = sh.seasonType === 'doping-ban'
+      ? 'Doping ban'
+      : sh.ballonIneligibleReason === 'doping-ban'
+      ? 'Ballon ineligible (ban)'
+      : 'Normal';
     const isPrime = idx === bestSeasonIdx;
     const rowClass = isPrime ? 'season-prime' : '';
     const primeLabel = isPrime ? '<span class="prime-label">✨ PRIME</span>' : '';
@@ -472,6 +479,7 @@ function renderSeasonTable() {
         <td><span class="season-val">${seasonWorth}</span></td>
         ${statsCells}
         <td>${sh.club}</td>
+        <td>${seasonStatus}</td>
         <td class="trophy-cell">${trophyStr}</td>
       </tr>
     `;
@@ -520,12 +528,17 @@ export function downloadCareerData() {
     ['Total Trophies', state.G.trophies.length],
     ['Final Reputation', Math.round(state.G.reputation)],
     [''],
-    ['Season', 'Age', 'OVR', 'Goals', 'Assists', 'Club', 'Trophies']
+    ['Season', 'Age', 'OVR', 'Goals', 'Assists', 'Club', 'Status', 'Trophies']
   ];
 
   state.G.seasonHistory.forEach(sh => {
     const trophy = sh.trophies.length > 0 ? sh.trophies.map(t => getTrophyName(t)).join('; ') : '';
-    csv.push([sh.season, sh.age, getSeasonOvr(sh) ?? '', sh.goals, sh.assists, sh.club, trophy]);
+    const seasonStatus = sh.seasonType === 'doping-ban'
+      ? 'Doping ban'
+      : sh.ballonIneligibleReason === 'doping-ban'
+      ? 'Ballon ineligible (ban)'
+      : 'Normal';
+    csv.push([sh.season, sh.age, getSeasonOvr(sh) ?? '', sh.goals, sh.assists, sh.club, seasonStatus, trophy]);
   });
 
   const csvContent = csv.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
