@@ -1,14 +1,78 @@
 import { state } from './state.js';
-import { addLog, downloadCareerLogTxt, renderUI, renderRetirementChoice, setTrend, showScreen } from './ui.js';
+import { addLog, clearStatFeedback, downloadCareerLogTxt, renderUI, renderRetirementChoice, setTrend, showScreen } from './ui.js';
 import { goToSeason } from './season.js';
 import { nextEvent } from './events.js';
 import { calcMarketValue, calcOvr, calcSalary, formatM, getTierOfClub, rng } from './utils.js';
 import { startGame, randomizeProfile, selectAcademy } from './game.js';
 import { retire, downloadCareerData } from './retire.js';
 import { renderSeasonResult } from './ui.js';
-import { showFreeAgencyTransfer } from './transfers.js';
+import { renderPreseasonCupHub, renderPreseasonCupQuestion, renderPreseasonCupRoundResult } from './ui.js';
+import { acceptMarketInterest, applyToMarketClub, changeCurrentClubManagerConnection, changeManagerConnection, clearMarketplaceFocus, consumeMarketFeedback, resolveMarketplaceFeedbackAtSeasonEnd, rippleKnownManagerConnections, setMarketApplicationMode, showFreeAgencyTransfer, showMarketplaceBoard, viewMarketplaceIncoming, viewMarketplaceTarget } from './transfers.js';
+import { TIERS } from './data.js';
+
+const PRESEASON_CUP_NAMES = [
+  'Summer Unity Cup',
+  'Champions Warmup Trophy',
+  'Elite Kickoff Shield',
+  'Preseason Stars Cup',
+  'Sunrise Invitational',
+];
+
+const PRESEASON_QUESTIONS = [
+  {
+    prompt: 'You are in the box, three defenders close in, and your teammate is free behind you. What do you do?',
+    options: [
+      { label: 'Attack the defenders', hint: 'High risk', impact: -1, deltas: { dribbling: 0.6 }, outcome: 'You forced the play and nearly lost it in traffic.' },
+      { label: 'Pass back to teammate', hint: 'Smart play', impact: 2, deltas: { passing: 0.8, reputation: 1 }, outcome: 'Quick pass, clean chance created, coach approves.' },
+    ],
+  },
+  {
+    prompt: 'Your fullback overlaps and asks for a through ball in transition. Your next move?',
+    options: [
+      { label: 'Through ball now', hint: 'Timing test', impact: 2, deltas: { passing: 0.7 }, outcome: 'Perfect timing opens the flank.' },
+      { label: 'Keep carrying the ball', hint: 'Safer touch', impact: -1, deltas: { dribbling: 0.4 }, outcome: 'The move slows down and defenders reset.' },
+    ],
+  },
+  {
+    prompt: 'You lose possession and the opponent starts a counter. How do you react?',
+    options: [
+      { label: 'Sprint back and press', hint: 'Big effort', impact: 1, deltas: { physical: 0.6, fitness: -4 }, outcome: 'You recover ground and disrupt the counter.' },
+      { label: 'Hold your shape', hint: 'Low energy', impact: -1, deltas: { fitness: 1 }, outcome: 'You save energy, but your line gets stretched.' },
+    ],
+  },
+  {
+    prompt: 'You receive the ball at the edge of the box with a narrow shooting lane.',
+    options: [
+      { label: 'Take the first-time shot', hint: 'Direct', impact: 1, deltas: { shooting: 0.7 }, outcome: 'Powerful attempt forces a difficult save.' },
+      { label: 'Settle and recycle', hint: 'Control', impact: 0, deltas: { passing: 0.4 }, outcome: 'Possession is retained, tempo stays calm.' },
+    ],
+  },
+  {
+    prompt: 'Late game, your team is under pressure on set pieces.',
+    options: [
+      { label: 'Take marking responsibility', hint: 'Leadership', impact: 2, deltas: { physical: 0.7, reputation: 1 }, outcome: 'You organize the line and clear danger.' },
+      { label: 'Stay higher for counters', hint: 'Gamble', impact: -2, deltas: { pace: 0.5 }, outcome: 'You wait for a break, but your box is overloaded.' },
+    ],
+  },
+  {
+    prompt: 'A teammate is frustrated and arguing with the referee. What do you do?',
+    options: [
+      { label: 'Calm him down', hint: 'Team first', impact: 1, deltas: { reputation: 1 }, outcome: 'You calm the situation and keep focus.' },
+      { label: 'Ignore and move on', hint: 'Neutral', impact: -1, deltas: {}, outcome: 'Tension remains and rhythm drops.' },
+    ],
+  },
+  {
+    prompt: 'You are subbed in and your first touch is under heavy pressure.',
+    options: [
+      { label: 'Shield and draw a foul', hint: 'Composed', impact: 1, deltas: { physical: 0.5 }, outcome: 'You slow the game and settle immediately.' },
+      { label: 'Spin and drive forward', hint: 'Explosive', impact: 0, deltas: { pace: 0.6 }, outcome: 'You beat one man but lose balance on the second.' },
+    ],
+  },
+];
 
 export function handleAction(action, data) {
+  clearStatFeedback();
+
   switch (action) {
     case 'randomize':
       randomizeProfile();
@@ -53,7 +117,7 @@ export function handleAction(action, data) {
       declineRenewal();
       break;
     case 'stay-club':
-      completeAction();
+      stayAtClub();
       break;
     case 'retire-early':
       retire();
@@ -69,6 +133,42 @@ export function handleAction(action, data) {
       break;
     case 'play-season':
       completeAction();
+      break;
+    case 'open-marketplace':
+      showMarketplaceBoard();
+      break;
+    case 'back-transfer-week':
+      nextEvent();
+      break;
+    case 'apply-market-club':
+      applyToMarketClub(Number(data.index));
+      break;
+    case 'accept-market-interest':
+      acceptMarketplaceInterest(Number(data.index));
+      break;
+    case 'view-market-interest':
+      viewMarketplaceIncoming(Number(data.index));
+      break;
+    case 'view-market-target':
+      viewMarketplaceTarget(Number(data.index));
+      break;
+    case 'set-market-mode':
+      setMarketApplicationMode(data.mode);
+      break;
+    case 'market-clear-focus':
+      clearMarketplaceFocus();
+      break;
+    case 'accept-market-feedback':
+      acceptMarketFeedbackOffer();
+      break;
+    case 'dismiss-market-feedback':
+      dismissMarketFeedback();
+      break;
+    case 'preseason-cup-start':
+      startPreseasonCupMatch();
+      break;
+    case 'preseason-answer':
+      answerPreseasonQuestion(Number(data.option));
       break;
     default:
       break;
@@ -112,9 +212,325 @@ export function handleChoice(i){
     case 'national-performance':
       nationalPerformance(choice.payload || {});
       break;
+    case 'preseason-yes':
+      acceptPreseasonInvite();
+      break;
+    case 'preseason-no':
+      declinePreseasonInvite();
+      break;
+    case 'preseason-lie':
+      fakeSickPreseasonInvite();
+      break;
+    case 'open-marketplace':
+      showMarketplaceBoard();
+      break;
     default:
       break;
   }
+}
+
+function acceptMarketplaceInterest(index) {
+  const offer = acceptMarketInterest(index);
+  if (!offer) return;
+  performTransfer(offer.club, offer.contractYrs, offer.releaseClause, offer.salary);
+}
+
+function acceptMarketFeedbackOffer() {
+  const offer = consumeMarketFeedback(true);
+  if (!offer) {
+    nextEvent();
+    return;
+  }
+  performTransfer(offer.club, offer.contractYrs, offer.releaseClause, offer.salary);
+}
+
+function dismissMarketFeedback() {
+  const pending = state.marketFeedbackQueue?.[0];
+  consumeMarketFeedback(false);
+  if (pending?.offer?.club?.name) {
+    changeManagerConnection(pending.offer.club.name, -8);
+    changeCurrentClubManagerConnection(4);
+    addLog(`You rejected ${pending.offer.club.name}'s offer. Their manager felt snubbed, your current manager approved your loyalty.`, true);
+  }
+  nextEvent();
+}
+
+function stayAtClub() {
+  changeCurrentClubManagerConnection(6);
+  addLog(`You chose loyalty and stayed at ${state.G.club.name}. Manager relationship improved.`, true);
+  completeAction();
+}
+
+function acceptPreseasonInvite() {
+  state.G.reputation = Math.min(100, state.G.reputation + 5);
+  changeCurrentClubManagerConnection(7);
+  state.preseasonCup = createPreseasonCupState();
+  addLog('You joined the preseason cup. Manager trust increased (+5 reputation).', true);
+  renderUI();
+  renderPreseasonCupHub();
+}
+
+function declinePreseasonInvite() {
+  state.G.reputation = Math.max(0, state.G.reputation - 50);
+  changeCurrentClubManagerConnection(-14);
+  addLog('You refused preseason duties. Manager disappointed (-50 reputation).', true);
+  renderUI();
+  completeAction();
+}
+
+function fakeSickPreseasonInvite() {
+  const caught = Math.random() < 0.5;
+  if (caught) {
+    const fine = Math.round((state.G.contract?.salary || 0) * 2);
+    state.G.reputation = Math.max(0, state.G.reputation - 100);
+    changeCurrentClubManagerConnection(-20);
+    rippleKnownManagerConnections(-4);
+    state.G.totalEarnings = Math.max(0, (state.G.totalEarnings || 0) - fine);
+    addLog(`Manager caught your lie. -100 reputation and a ${formatM(fine)} fine.`, true);
+  } else {
+    changeCurrentClubManagerConnection(-5);
+    addLog('You claimed sickness and avoided preseason. The manager did not catch it.', true);
+  }
+
+  renderUI();
+  completeAction();
+}
+
+function createPreseasonCupState() {
+  const cupName = PRESEASON_CUP_NAMES[Math.floor(Math.random() * PRESEASON_CUP_NAMES.length)];
+  const opponentPool = buildPreseasonOpponentPool();
+  const teams = [state.G.club.name, ...opponentPool];
+  const teamStrengths = buildPreseasonTeamStrengths(teams);
+  const otherSemi = simulateAiMatch(teams[2], teams[3], teamStrengths);
+
+  return {
+    name: cupName,
+    teams,
+    teamStrengths,
+    semiOpponent: teams[1],
+    finalOpponent: null,
+    otherSemi,
+    stage: 'semi',
+    currentMatch: null,
+    results: [otherSemi],
+    champion: null,
+  };
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function buildPreseasonOpponentPool() {
+  const currentTierIndex = Math.max(0, (state.G.clubTier || 1) - 1);
+  const candidateTiers = [
+    Math.max(0, currentTierIndex - 1),
+    currentTierIndex,
+    Math.min(TIERS.length - 1, currentTierIndex + 1),
+  ];
+
+  const candidates = candidateTiers
+    .flatMap(index => TIERS[index] || [])
+    .filter(club => club.name !== state.G.club.name);
+
+  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+  const picked = shuffled.slice(0, 3).map(club => club.name);
+
+  if (picked.length === 3) return picked;
+
+  const fallbackPool = TIERS.flat()
+    .filter(club => club.name !== state.G.club.name && !picked.includes(club.name))
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3 - picked.length)
+    .map(club => club.name);
+
+  return [...picked, ...fallbackPool];
+}
+
+function buildPreseasonTeamStrengths(teams) {
+  const byName = TIERS.flat().reduce((acc, club) => {
+    acc[club.name] = club.prestige;
+    return acc;
+  }, {});
+
+  const ovr = calcOvr();
+  const playerClubStrength = clamp(
+    52 + (state.G.club?.prestige || 60) * 0.42 + ovr * 0.33 + (state.G.reputation || 0) * 0.08,
+    50,
+    96,
+  );
+
+  const strengths = { [state.G.club.name]: playerClubStrength };
+
+  teams
+    .filter(name => name !== state.G.club.name)
+    .forEach(name => {
+      const prestige = byName[name] || 60;
+      strengths[name] = clamp(50 + prestige * 0.45 + rng(-4, 4), 48, 94);
+    });
+
+  return strengths;
+}
+
+function rollGoalsFromStrength(strengthValue) {
+  const expected = clamp(0.65 + (strengthValue - 55) / 32, 0.35, 2.85);
+  let goals = 0;
+  if (Math.random() < clamp(expected / 2.8, 0.10, 0.80)) goals++;
+  if (Math.random() < clamp((expected - 0.45) / 3.0, 0.06, 0.62)) goals++;
+  if (Math.random() < clamp((expected - 1.1) / 3.8, 0.02, 0.46)) goals++;
+  if (Math.random() < clamp((expected - 1.8) / 5.0, 0, 0.24)) goals++;
+  return goals;
+}
+
+function simulateAiMatch(home, away, teamStrengths) {
+  const homeStrength = teamStrengths?.[home] ?? 64;
+  const awayStrength = teamStrengths?.[away] ?? 64;
+  let homeGoals = rollGoalsFromStrength(homeStrength + 1.2);
+  let awayGoals = rollGoalsFromStrength(awayStrength);
+  if (homeGoals === awayGoals) {
+    const edge = clamp((homeStrength - awayStrength) / 24, -0.25, 0.25);
+    if (Math.random() < 0.5 + edge) homeGoals++;
+    else awayGoals++;
+  }
+  return {
+    round: 'Semi-final 2',
+    home,
+    away,
+    homeGoals,
+    awayGoals,
+    winner: homeGoals > awayGoals ? home : away,
+  };
+}
+
+function startPreseasonCupMatch() {
+  const cup = state.preseasonCup;
+  if (!cup || cup.currentMatch) return;
+
+  const round = cup.stage === 'semi' ? 'Semi-final 1' : 'Final';
+  const opponent = cup.stage === 'semi' ? cup.semiOpponent : cup.finalOpponent;
+  const onBench = shouldStartOnBench();
+
+  cup.currentMatch = {
+    round,
+    opponent,
+    startMode: onBench ? `Bench start — subbed in around ${rng(68, 76)}'` : 'Starting XI',
+    questionIndex: 0,
+    performance: 0,
+    notes: [],
+    questions: [...PRESEASON_QUESTIONS].sort(() => Math.random() - 0.5).slice(0, 5),
+  };
+
+  renderPreseasonCupQuestion();
+}
+
+function shouldStartOnBench() {
+  const ovr = calcOvr();
+  const lowStatus = state.G.age <= 18 || ovr < 68 || state.G.reputation < 28;
+  return lowStatus ? Math.random() < 0.8 : Math.random() < 0.22;
+}
+
+function answerPreseasonQuestion(optionIndex) {
+  const cup = state.preseasonCup;
+  const match = cup?.currentMatch;
+  if (!cup || !match) return;
+
+  const question = match.questions[match.questionIndex];
+  if (!question) return;
+  const selected = question.options[optionIndex];
+  if (!selected) return;
+
+  match.performance += selected.impact;
+  if (selected.deltas && Object.keys(selected.deltas).length) {
+    applyStatDeltas(selected.deltas);
+  }
+  if (selected.outcome) {
+    match.notes.push(selected.outcome);
+  }
+
+  match.questionIndex++;
+  renderUI();
+
+  if (match.questionIndex >= match.questions.length) {
+    finalizePreseasonMatch();
+    return;
+  }
+
+  renderPreseasonCupQuestion();
+}
+
+function finalizePreseasonMatch() {
+  const cup = state.preseasonCup;
+  const match = cup?.currentMatch;
+  if (!cup || !match) return;
+
+  const teamStrengths = cup.teamStrengths || {};
+  const homeStrength = teamStrengths[state.G.club.name] || 64;
+  const awayStrength = teamStrengths[match.opponent] || 64;
+  const benchPenalty = match.startMode.startsWith('Bench') ? 2.0 : 0;
+  const performanceImpact = clamp(match.performance, -4, 4);
+
+  let homeGoals = rollGoalsFromStrength(homeStrength - benchPenalty + performanceImpact * 1.6);
+  let awayGoals = rollGoalsFromStrength(awayStrength - performanceImpact * 0.7);
+
+  if (homeGoals === awayGoals) {
+    const strengthEdge = clamp((homeStrength - awayStrength) / 26, -0.24, 0.24);
+    const clutchEdge = clamp(performanceImpact * 0.05, -0.20, 0.20);
+    if (Math.random() < 0.5 + strengthEdge + clutchEdge) homeGoals++;
+    else awayGoals++;
+    match.notes.push('Late winner in a dramatic finish.');
+  }
+
+  const result = {
+    round: match.round,
+    home: state.G.club.name,
+    away: match.opponent,
+    homeGoals,
+    awayGoals,
+    winner: homeGoals > awayGoals ? state.G.club.name : match.opponent,
+    startMode: match.startMode,
+    notes: match.notes,
+  };
+
+  cup.results.push(result);
+  cup.currentMatch = null;
+
+  if (cup.stage === 'semi') {
+    if (result.winner !== state.G.club.name) {
+      cup.stage = 'done';
+      cup.champion = cup.otherSemi.winner;
+      state.G.reputation = Math.max(0, state.G.reputation - 4);
+      addLog(`Preseason exit in the semi-final (${homeGoals}-${awayGoals}).`, true);
+      renderUI();
+      renderPreseasonCupRoundResult(result, false, false);
+      return;
+    }
+
+    cup.finalOpponent = cup.otherSemi.winner;
+    cup.stage = 'final';
+    state.G.reputation = Math.min(100, state.G.reputation + 2);
+    addLog(`You reached the preseason final after a ${homeGoals}-${awayGoals} win.`, true);
+    renderUI();
+    renderPreseasonCupRoundResult(result, true, false);
+    return;
+  }
+
+  cup.stage = 'done';
+  if (result.winner === state.G.club.name) {
+    cup.champion = state.G.club.name;
+    const trophyKey = `preseason:${cup.name}:S${state.G.season}`;
+    state.G.trophies.push(trophyKey);
+    state.G.reputation = Math.min(100, state.G.reputation + 8);
+    addLog(`🏆 You won the ${cup.name}.`, true);
+    renderUI();
+    renderPreseasonCupRoundResult(result, true, true);
+    return;
+  }
+
+  cup.champion = cup.finalOpponent;
+  state.G.reputation = Math.max(0, state.G.reputation - 2);
+  addLog(`You lost the preseason final (${homeGoals}-${awayGoals}).`, true);
+  renderUI();
+  renderPreseasonCupRoundResult(result, false, true);
 }
 
 function doTraining(deltas) {
@@ -165,6 +581,8 @@ function rushBack(baseDelta) {
 
 function refuseDoping() {
   state.G.reputation=Math.min(100,state.G.reputation+5);
+  changeCurrentClubManagerConnection(4);
+  rippleKnownManagerConnections(2);
   renderUI();
   addLog('You refused performance enhancers. Integrity intact.',true);
   completeAction();
@@ -175,6 +593,8 @@ function acceptDoping() {
   if (caught) {
     state.G.bannedSeasons=2; state.G.dopingBans++;
     state.G.reputation=Math.max(0,state.G.reputation-30);
+    changeCurrentClubManagerConnection(-30);
+    rippleKnownManagerConnections(-10);
     renderUI();
     addLog('Tested positive. 2-season ban. Your reputation is destroyed.',true);
     renderSeasonResult({
@@ -185,6 +605,10 @@ function acceptDoping() {
   } else {
     state.G.stats.pace=Math.min(99,state.G.stats.pace+2);
     state.G.stats.physical=Math.min(99,state.G.stats.physical+2);
+    setTrend('pace', 2);
+    setTrend('physical', 2);
+    changeCurrentClubManagerConnection(-6);
+    rippleKnownManagerConnections(-2);
     renderUI();
     addLog('Took the enhancers. Untested this time. You know the risk.',true);
     completeAction();
@@ -208,8 +632,16 @@ function mentorTrain() {
 }
 
 function pressConf() {
-  if (Math.random()<0.55) applyAndSeason({reputation:8},'Bold press conference. You deliver a stellar run. Press eats humble pie.');
-  else applyAndSeason({reputation:-5},'Press conference backfires. A journalist clips it and it goes viral.');
+  if (Math.random()<0.55) {
+    changeCurrentClubManagerConnection(5);
+    rippleKnownManagerConnections(1);
+    applyAndSeason({reputation:8},'Bold press conference. You deliver a stellar run. Press eats humble pie.');
+  }
+  else {
+    changeCurrentClubManagerConnection(-7);
+    rippleKnownManagerConnections(-2);
+    applyAndSeason({reputation:-5},'Press conference backfires. A journalist clips it and it goes viral.');
+  }
 }
 
 function acceptTransfer(idx) {
@@ -228,13 +660,14 @@ function acceptRenewal() {
   const offer = state.renewalOffer;
   if (!offer) return;
 
-  state.G.contract = {
+  state.pendingContract = {
     years: offer.contractYrs,
     releaseClause: offer.releaseClause,
     salary: offer.salary,
   };
 
-  addLog(`📝 Renewed with ${state.G.club.name}: ${offer.contractYrs} year${offer.contractYrs>1?'s':''}, RC ${formatM(offer.releaseClause)}`, true);
+  addLog(`📝 Pre-contract signed with ${state.G.club.name}: ${offer.contractYrs} year${offer.contractYrs>1?'s':''} starting next season, RC ${formatM(offer.releaseClause)}`, true);
+  changeCurrentClubManagerConnection(10);
   state.renewalOffer = null;
   state.renewalContext = null;
   renderUI();
@@ -247,28 +680,42 @@ function declineRenewal() {
   state.renewalContext = null;
 
   if (context === 'free-agent') {
+    changeCurrentClubManagerConnection(-8);
     addLog(`You rejected ${state.G.club.name}'s renewal and entered the market as a free agent.`);
     showFreeAgencyTransfer();
     return;
   }
 
+  changeCurrentClubManagerConnection(-5);
   addLog(`You postponed renewal talks with ${state.G.club.name}.`);
   completeAction();
 }
 
 function declineRC() {
+  if (state.rcOffer?.club?.name) {
+    changeManagerConnection(state.rcOffer.club.name, -10);
+  }
+  changeCurrentClubManagerConnection(5);
   addLog(`You refused ${state.rcOffer.club.name}\'s advances. Bold move.`);
   completeAction();
 }
 
 function performTransfer(club, yrs, rc, salary) {
   const oldClub = state.G.club.name;
-  state.G.club = club;
-  state.G.clubTier = getTierOfClub(club.name);
-  state.G.contract = { years: yrs, releaseClause: rc, salary: salary || calcSalary(calcOvr()) };
-  state.G.reputation = Math.min(100, state.G.reputation + club.prestige/25);
+  state.pendingTransfer = {
+    club,
+    clubTier: getTierOfClub(club.name),
+    contract: { years: yrs, releaseClause: rc, salary: salary || calcSalary(calcOvr()) }
+  };
+
+  state.pendingContract = null;
+
+  changeManagerConnection(oldClub, -10);
+  changeManagerConnection(club.name, 14);
+
+  state.G.reputation = Math.min(100, state.G.reputation + club.prestige/40);
   renderUI();
-  addLog(`✈️ Transferred to ${club.name} — ${yrs}yr deal, RC: ${formatM(rc)}`, true);
+  addLog(`✈️ Pre-contract agreed: ${oldClub} → ${club.name} (${yrs}yr) effective next season.`, true);
   completeAction();
 }
 
@@ -384,6 +831,27 @@ export function advanceSeason() {
   });
 
   state.G.age++; state.G.season++; state.G.seasonsPlayed++;
+
+  resolveMarketplaceFeedbackAtSeasonEnd();
+  state.marketBoard = null;
+  if (!state.marketUi) {
+    state.marketUi = { incomingIndex: null, targetIndex: null, applyMode: 'balanced' };
+  } else {
+    state.marketUi.incomingIndex = null;
+    state.marketUi.targetIndex = null;
+  }
+
+  if (state.pendingTransfer) {
+    state.G.club = state.pendingTransfer.club;
+    state.G.clubTier = state.pendingTransfer.clubTier;
+    state.G.contract = state.pendingTransfer.contract;
+    state.pendingTransfer = null;
+    state.pendingContract = null;
+  } else if (state.pendingContract) {
+    state.G.contract = state.pendingContract;
+    state.pendingContract = null;
+  }
+
   state.seasonAction = 1;
   renderUI();
 

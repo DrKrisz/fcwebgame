@@ -101,6 +101,11 @@ export function getDomesticCupName(league) {
 
 export function getTrophyName(trophyKey) {
   if (typeof trophyKey !== 'string') return 'Unknown Trophy';
+  if (trophyKey.startsWith('preseason:')) {
+    const parts = trophyKey.slice('preseason:'.length).split(':S');
+    const cupName = parts[0];
+    return cupName || 'Preseason Cup';
+  }
   if (trophyKey.startsWith('league:')) {
     const league = trophyKey.slice('league:'.length);
     return league ? `${league} Title` : 'League Title';
@@ -110,6 +115,12 @@ export function getTrophyName(trophyKey) {
     return cup || 'Domestic Cup';
   }
   return TROPHY_NAMES[trophyKey] || trophyKey;
+}
+
+export function extractPreseasonTrophyInfo(trophyKey) {
+  if (!trophyKey.startsWith('preseason:')) return null;
+  const parts = trophyKey.slice('preseason:'.length).split(':S');
+  return { cupName: parts[0], season: parseInt(parts[1]) || 0 };
 }
 
 export const STAT_META = {

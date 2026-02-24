@@ -1,12 +1,12 @@
 import { state } from './state.js';
 import { calcMarketValue, calcOvr } from './utils.js';
 import { renderEvent, renderSeasonResult } from './ui.js';
-import { buildRenewalOffer, buildTransferOffers, renderTransferChoices, showContractTalk, showFreeAgencyTransfer, showReleaseClauseEvent } from './transfers.js';
+import { buildRenewalOffer, buildTransferOffers, canClubFinanceMove, renderTransferChoices, showContractTalk, showFreeAgencyTransfer, showNextMarketplaceFeedback, showReleaseClauseEvent } from './transfers.js';
 import { buildSeasonEvent } from './season.js';
 import { TIERS, getDomesticCupName, getNationalTeamProfile } from './data.js';
 
 const ACTION_LABELS = {
-  1: 'Preseason Training',
+  1: 'Preseason Cup',
   2: 'League Matchday',
   3: 'League Matchday',
   4: 'Domestic Cup',
@@ -16,9 +16,14 @@ const ACTION_LABELS = {
   8: 'Clutch Moment',
   9: 'Transfer & Contract Week',
   10:'Season Run-In',
+  11:'League Matchday',
+  12:'Adidas Cup',
+  13:'Nike Cup'
 };
 
 export function nextEvent() {
+  if (showNextMarketplaceFeedback()) return;
+
   if (state.G.bannedSeasons > 0) {
     state.G.bannedSeasons--;
     state.G.fitness = Math.min(100, state.G.fitness + 10);
@@ -89,7 +94,10 @@ function checkReleaseClauseTrigger() {
 
   const higherTiers = TIERS.slice(state.G.clubTier, Math.min(state.G.clubTier + 2, TIERS.length));
   if (!higherTiers.length) return null;
-  const pool = higherTiers.flat().filter(c => c.prestige > state.G.club.prestige + 5);
+  const pool = higherTiers
+    .flat()
+    .filter(c => c.prestige > state.G.club.prestige + 5)
+    .filter(c => canClubFinanceMove(c, rc, ovr) || Math.random() < 0.08);
   if (!pool.length) return null;
 
   const total = pool.reduce((s,c)=>s+c.prestige,0);
@@ -116,11 +124,11 @@ function buildTransferEvent(offers) {
 function buildTrainingEvent() {
   return {
     colorClass:'ec-training', icon:'🏋️', tag:'TRAINING CAMP',
-    text:`Action ${state.seasonAction}/${state.seasonActionsTotal} — ${ACTION_LABELS[state.seasonAction]}. Coaches are watching. <strong>${state.G.name}</strong>, how hard do you train?`,
+    text:`Action ${state.seasonAction}/${state.seasonActionsTotal}. Pre-season has started and the manager is counting on you for a small cup tournament. <strong>${state.G.name}</strong>, are you in?`,
     choices:[
-      {icon:'🔥',label:'Train Hard', hint:'Two stats +1, Fitness -9', actionType:'apply-season', payload:{deltas:buildHardTrainingDeltas(), msg:'You pushed the limit in preseason.'}},
-      {icon:'⚖️',label:'Balanced Work', hint:'One focused boost', actionType:'training', payload:buildBalancedTrainingDeltas()},
-      {icon:'🛌',label:'Recovery Block', hint:'Fitness +8', actionType:'apply-season', payload:{deltas:buildRecoveryDeltas(), msg:'You prioritized freshness and tactical sharpness.'}},
+      {icon:'✅',label:'Yes, I am in', hint:'Reputation +5', actionType:'preseason-yes'},
+      {icon:'❌',label:'No, I am out', hint:'Reputation -50', actionType:'preseason-no'},
+      {icon:'🤒',label:'Lie: say you are sick', hint:'50/50 catch risk', actionType:'preseason-lie'},
     ]
   };
 }
@@ -250,6 +258,7 @@ function buildTransferWeekFallbackEvent() {
     colorClass:'ec-fame', icon:'🧾', tag:'CONTRACT WEEK',
     text:`Action ${state.seasonAction}/${state.seasonActionsTotal}. Quiet market week. Your focus remains on performance and long-term value.`,
     choices:[
+      {icon:'📡',label:'Open marketplace', hint:'Who wants you?', actionType:'open-marketplace'},
       {icon:'📈',label:'Agent networking', hint:'Reputation +1', actionType:'apply-season', payload:{deltas:{reputation:1}, msg:'Your camp strengthened your market reputation.'}},
       {icon:'🎯',label:'Ignore noise, train', hint:'Shooting +1', actionType:'training', payload:{shooting:1}},
     ]

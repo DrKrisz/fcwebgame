@@ -47,13 +47,48 @@ export function calcReleaseClause(ovr, prestige) {
     : Math.max(0.05, 1-(age-25)*0.055);
   const ovrFactor = Math.pow(Math.max(0, ovr-50)/49, 2.1);
   const mv = Math.max(0.3, Math.round(ovrFactor * ageFactor * 260 * 10)/10);
-  const multi = 1.8 + (prestige / 100);
-  return Math.max(1, Math.round(mv * multi * 10)/10);
+  const elitePremium = ovr >= 92 ? 0.65 : ovr >= 87 ? 0.4 : ovr >= 82 ? 0.2 : 0;
+  const clubProtection = 2.05 + (prestige / 90) + elitePremium;
+  const floor = mv * (1.5 + Math.max(0, ovr - 74) / 120);
+  return Math.max(1, Math.round(Math.max(floor, mv * clubProtection) * 10)/10);
 }
 
-export function calcSalary(ovr) {
-  const weekly = Math.round(Math.pow(Math.max(0,ovr-50)/49, 1.8) * 350000 / 1000) * 1000;
-  return Math.max(500, weekly);
+function getAgeSalaryFactor(age) {
+  const points = [
+    [16, 0.42],
+    [18, 0.55],
+    [21, 0.72],
+    [23, 0.82],
+    [25, 0.92],
+    [28, 1.0],
+    [31, 0.95],
+    [34, 0.84],
+    [37, 0.7],
+    [40, 0.55],
+  ];
+
+  if (age <= points[0][0]) return points[0][1];
+  if (age >= points[points.length - 1][0]) return points[points.length - 1][1];
+
+  for (let i = 1; i < points.length; i++) {
+    const [x2, y2] = points[i];
+    if (age <= x2) {
+      const [x1, y1] = points[i - 1];
+      const t = (age - x1) / (x2 - x1);
+      return y1 + (y2 - y1) * t;
+    }
+  }
+
+  return 1;
+}
+
+export function calcSalary(ovr, age = (state.G?.age || 16)) {
+  const ovrRatio = Math.max(0, ovr - 50) / 49;
+  const talentPay = Math.pow(ovrRatio, 1.78) * 300000;
+  const eliteBonus = ovr >= 92 ? (ovr - 91) * 8000 : 0;
+  const ageFactor = getAgeSalaryFactor(age);
+  const weekly = Math.round(((talentPay + eliteBonus) * ageFactor) / 1000) * 1000;
+  return Math.max(1000, weekly);
 }
 
 export function getContractYearRange(age) {

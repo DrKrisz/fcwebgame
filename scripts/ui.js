@@ -1,6 +1,8 @@
 import { state } from './state.js';
-import { STAT_META, GK_STAT_META, PHASES, getTrophyName } from './data.js';
+import { STAT_META, GK_STAT_META, PHASES, getTrophyName, extractPreseasonTrophyInfo } from './data.js';
 import { calcOvr, calcMarketValue, formatM, ordinal } from './utils.js';
+
+const statFeedbackClearTimers = {};
 
 function formatCurrency(n) {
   if (n >= 1000000000) return `€${(n / 1000000000).toFixed(2)}B`;
@@ -35,7 +37,10 @@ export function renderUI() {
   if (ovr >= calcOvr() && state.G.club) state.G.peakClub = state.G.club.name;
 
   document.getElementById('d-name').textContent    = `${state.G.nat} ${state.G.name}`;
-  document.getElementById('d-club').textContent    = state.G.club.name;
+  const pendingClub = state.pendingTransfer?.club?.name;
+  document.getElementById('d-club').textContent    = pendingClub
+    ? `${state.G.club.name} → ${pendingClub} (next season)`
+    : state.G.club.name;
   document.getElementById('d-league').textContent  = `${state.G.club.country} ${state.G.club.league}`;
   document.getElementById('d-age').textContent     = state.G.age;
   document.getElementById('d-ovr').textContent     = ovr;
@@ -85,39 +90,180 @@ export function renderStats() {
     const displayLabel = meta.label || k;
     name.textContent = `${meta.icon} ${displayLabel}`;
 
+    const valRow = document.createElement('div');
+    valRow.className = 'stat-val-row';
+
     const val = document.createElement('div');
     val.className = 'stat-val';
     val.textContent = v;
+
+    const feedback = document.createElement('span');
+    feedback.className = 'stat-val-feedback';
+    feedback.id = `sf-${k}`;
+
+    const delta = Number(state.statFeedback?.[k] || 0);
+    if (delta > 0) {
+      feedback.classList.add('stat-val-feedback-up');
+      feedback.textContent = `+${formatDelta(delta)}`;
+    } else if (delta < 0) {
+      feedback.classList.add('stat-val-feedback-dn');
+      feedback.textContent = `${formatDelta(delta)}`;
+    }
 
     const trend = document.createElement('div');
     trend.className = 'stat-trend';
     trend.id = `tr-${k}`;
 
     card.appendChild(name);
-    card.appendChild(val);
+    valRow.appendChild(val);
+    valRow.appendChild(feedback);
+    card.appendChild(valRow);
     card.appendChild(trend);
     panel.appendChild(card);
   });
 }
 
+function formatDelta(n) {
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}` : `${rounded.toFixed(1)}`;
+}
+
+function clearFeedbackTimer(feedbackId) {
+  if (!feedbackId || !statFeedbackClearTimers[feedbackId]) return;
+  clearTimeout(statFeedbackClearTimers[feedbackId]);
+  delete statFeedbackClearTimers[feedbackId];
+}
+
+function clearFeedbackElement(feedback, animated = true) {
+  if (!feedback) return;
+
+  const feedbackId = feedback.id;
+  clearFeedbackTimer(feedbackId);
+
+  if (!animated || !feedback.textContent.trim()) {
+    feedback.className = 'stat-val-feedback';
+    feedback.textContent = '';
+    return;
+  }
+
+  feedback.classList.add('stat-val-feedback-fadeout');
+  statFeedbackClearTimers[feedbackId] = setTimeout(() => {
+    feedback.className = 'stat-val-feedback';
+    feedback.textContent = '';
+    delete statFeedbackClearTimers[feedbackId];
+  }, 180);
+}
+
+export function clearStatFeedback() {
+  state.statFeedback = {};
+  const feedbackEls = document.querySelectorAll('.stat-val-feedback');
+  feedbackEls.forEach((feedback) => clearFeedbackElement(feedback, true));
+}
+
 export function setTrend(key, delta) {
+  if (!state.statFeedback || typeof state.statFeedback !== 'object') {
+    state.statFeedback = {};
+  }
+
+  const normalized = Math.round(Number(delta || 0) * 10) / 10;
+  const feedback = document.getElementById(`sf-${key}`);
+
+  if (normalized === 0 || Number.isNaN(normalized)) {
+    delete state.statFeedback[key];
+    clearFeedbackElement(feedback, true);
+  } else {
+
+    state.statFeedback[key] = normalized;
+    if (feedback) {
+      clearFeedbackTimer(feedback.id);
+      feedback.className = 'stat-val-feedback';
+      feedback.classList.remove('stat-val-feedback-fadeout');
+      if (normalized > 0) {
+        feedback.classList.add('stat-val-feedback-up');
+        feedback.textContent = `+${formatDelta(normalized)}`;
+      } else {
+        feedback.classList.add('stat-val-feedback-dn');
+        feedback.textContent = `${formatDelta(normalized)}`;
+      }
+    }
+  }
+
   const el = document.getElementById(`tr-${key}`);
-  if (!el) return;
-  if (delta > 0)      el.innerHTML = `<span class="trend-up">+${delta}</span>`;
-  else if (delta < 0) el.innerHTML = `<span class="trend-dn">${delta}</span>`;
-  else el.textContent = '';
+  if (el) el.textContent = '';
 }
 
 export function renderTrophies() {
-  const counts = {};
-  state.G.trophies.forEach(t => counts[t] = (counts[t]||0)+1);
   const inner = document.getElementById('trophies-inner');
   inner.querySelectorAll('.trophy-chip').forEach(e=>e.remove());
+  inner.querySelectorAll('.trophy-group').forEach(e=>e.remove());
+  
   if (state.G.trophies.length === 0) {
     document.getElementById('no-trophy-msg').style.display='';
     return;
   }
   document.getElementById('no-trophy-msg').style.display='none';
+
+  const preseasonTrophies = state.G.trophies.filter(t => t.startsWith('preseason:'));
+  const otherTrophies = state.G.trophies.filter(t => !t.startsWith('preseason:'));
+
+  if (preseasonTrophies.length > 0) {
+    if (preseasonTrophies.length <= 2) {
+      preseasonTrophies.forEach(t => {
+        const info = extractPreseasonTrophyInfo(t);
+        const chip = document.createElement('span');
+        chip.className='trophy-chip';
+        chip.textContent=`${info.cupName} (S${info.season})`;
+        inner.appendChild(chip);
+      });
+    } else {
+      const groupDiv = document.createElement('div');
+      groupDiv.className='trophy-group';
+      
+      const header = document.createElement('span');
+      header.className='trophy-chip trophy-group-header';
+      header.id='trophy-preseason-header';
+      const expandArrow = document.createElement('span');
+      expandArrow.className='trophy-group-arrow';
+      expandArrow.textContent = '▶';
+      expandArrow.style.display = 'inline-block';
+      expandArrow.style.marginRight = '5px';
+      expandArrow.style.transition = 'transform .2s';
+      header.appendChild(expandArrow);
+      header.append(`Pre-Season Cup ×${preseasonTrophies.length}`);
+      header.style.cursor = 'pointer';
+      header.addEventListener('click', () => {
+        const list = document.getElementById('trophy-preseason-list');
+        const isHidden = list.style.display === 'none';
+        list.style.display = isHidden ? 'flex' : 'none';
+        expandArrow.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+      });
+      
+      groupDiv.appendChild(header);
+      
+      const listDiv = document.createElement('div');
+      listDiv.id='trophy-preseason-list';
+      listDiv.style.display='none';
+      listDiv.style.flexDirection='column';
+      listDiv.style.gap='4px';
+      listDiv.style.marginTop='8px';
+      listDiv.style.paddingLeft='10px';
+      listDiv.style.borderLeft='2px solid rgba(212,160,23,.3)';
+      
+      preseasonTrophies.forEach(t => {
+        const info = extractPreseasonTrophyInfo(t);
+        const chip = document.createElement('span');
+        chip.className='trophy-chip trophy-subitem';
+        chip.textContent=`${info.cupName} (S${info.season})`;
+        listDiv.appendChild(chip);
+      });
+      
+      groupDiv.appendChild(listDiv);
+      inner.appendChild(groupDiv);
+    }
+  }
+
+  const counts = {};
+  otherTrophies.forEach(t => counts[t] = (counts[t]||0)+1);
   Object.entries(counts).forEach(([t,n]) => {
     const chip = document.createElement('span');
     chip.className='trophy-chip';
@@ -264,5 +410,107 @@ export function renderRetirementChoice(retireMsg, keepPlayingMsg, canKeepPlaying
       <button class="btn-primary btn-flex-sm" data-action="retire">🌅 Retire Now</button>
       ${canKeepPlaying ? `<button class="btn-accept btn-flex-sm btn-keep-playing" data-action="continue-career">⚽ Keep Playing</button>` : `<button class="btn-decline btn-flex-sm">⚽ Keep Playing (No clubs interested)</button>`}
     </div>
+  </div>`;
+}
+
+function buildPreseasonTableHTML(cup) {
+  if (!cup) return '';
+
+  const yourSemi = cup.results.find(r => r.round === 'Semi-final 1');
+  const otherSemi = cup.otherSemi;
+  const finalResult = cup.results.find(r => r.round === 'Final');
+
+  const fmt = (match) => {
+    if (!match) return '—';
+    return `${match.home} ${match.homeGoals}-${match.awayGoals} ${match.away}`;
+  };
+
+  return `
+    <div class="preseason-table-wrap">
+      <div class="preseason-table-title">${cup.name} · 4 Teams</div>
+      <table class="preseason-table">
+        <thead>
+          <tr><th>Round</th><th>Match</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Semi-final 1</td><td>${yourSemi ? fmt(yourSemi) : `${cup.teams[0]} vs ${cup.teams[1]}`}</td></tr>
+          <tr><td>Semi-final 2</td><td>${fmt(otherSemi)}</td></tr>
+          <tr><td>Final</td><td>${finalResult ? fmt(finalResult) : 'TBD'}</td></tr>
+          <tr><td>Champion</td><td>${cup.champion || 'TBD'}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+export function renderPreseasonCupHub() {
+  const cup = state.preseasonCup;
+  if (!cup) return;
+
+  const area = document.getElementById('event-area');
+  const nextRoundLabel = cup.stage === 'final' ? 'Start Final' : 'Start Semi-final';
+
+  area.innerHTML = `<div class="event-box ec-season preseason-box">
+    <div class="event-tag"><div class="event-dot"></div>🏆 PRESEASON CUP</div>
+    <div class="event-text">Manager says: <strong>"Preseason started. I count on you."</strong> Your team enters the <strong>${cup.name}</strong>.</div>
+    ${buildPreseasonTableHTML(cup)}
+    <div class="action-row">
+      <button class="btn-continue" data-action="preseason-cup-start">▶ ${nextRoundLabel}</button>
+    </div>
+  </div>`;
+}
+
+export function renderPreseasonCupQuestion() {
+  const cup = state.preseasonCup;
+  const match = cup?.currentMatch;
+  if (!cup || !match) return;
+
+  const area = document.getElementById('event-area');
+  const q = match.questions[match.questionIndex];
+  const progress = `${match.questionIndex + 1}/5`;
+
+  area.innerHTML = `<div class="event-box ec-season preseason-box">
+    <div class="event-tag"><div class="event-dot"></div>⚽ ${match.round.toUpperCase()}</div>
+    <div class="event-text"><strong>${state.G.club.name}</strong> vs <strong>${match.opponent}</strong> · ${match.startMode}</div>
+    ${buildPreseasonTableHTML(cup)}
+    <div class="preseason-q-wrap">
+      <div class="preseason-q-head">Match Decision ${progress}</div>
+      <div class="preseason-q-text">${q.prompt}</div>
+      <div class="choices">${q.options.map((opt, i) => `
+        <button class="btn-c" data-action="preseason-answer" data-option="${i}">
+          <span class="c-icon">🎮</span>
+          <span>${opt.label}</span>
+          <span class="c-hint">${opt.hint}</span>
+        </button>
+      `).join('')}</div>
+    </div>
+  </div>`;
+}
+
+export function renderPreseasonCupRoundResult(result, won, isFinal) {
+  const cup = state.preseasonCup;
+  if (!cup) return;
+
+  const area = document.getElementById('event-area');
+  const title = isFinal
+    ? (won ? `🏆 ${cup.name} WON` : `💔 ${cup.name} LOST`)
+    : (won ? '✅ Semi-final Won' : '❌ Semi-final Lost');
+  const subtitle = `${result.home} ${result.homeGoals} - ${result.awayGoals} ${result.away}`;
+
+  const notes = (result.notes || []).slice(-2);
+  const notesHTML = notes.length
+    ? `<div class="preseason-notes">${notes.map(n => `<div>• ${n}</div>`).join('')}</div>`
+    : '';
+
+  const cta = won && !isFinal
+    ? '<button class="btn-continue" data-action="preseason-cup-start">▶ Start Final</button>'
+    : '<button class="btn-continue" data-action="play-season">▶ Continue to Action 2/10</button>';
+
+  area.innerHTML = `<div class="event-box ec-season preseason-box">
+    <div class="event-tag"><div class="event-dot"></div>📋 PRESEASON RESULT</div>
+    <div class="event-text"><strong>${title}</strong><br>${subtitle}</div>
+    ${notesHTML}
+    ${buildPreseasonTableHTML(cup)}
+    <div class="action-row">${cta}</div>
   </div>`;
 }

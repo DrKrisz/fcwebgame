@@ -4,6 +4,33 @@ import { renderSeasonResult } from './ui.js';
 import { getDomesticCupName, getTrophyName } from './data.js';
 import { calcOvr } from './utils.js';
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getLeagueDifficulty(leagueName) {
+  const map = {
+    'Premier League': 1.18,
+    'La Liga': 1.12,
+    'Serie A': 1.08,
+    'Bundesliga': 1.03,
+    'Ligue 1': 0.86,
+    'Primeira Liga': 0.88,
+    'Eredivisie': 0.90,
+    'EFL Championship': 0.98,
+    '2. Bundesliga': 0.95,
+  };
+  return map[leagueName] || 1.0;
+}
+
+function getDomesticDominanceBoost(leagueName, prestige) {
+  if (prestige < 88) return 0;
+  if (leagueName === 'Ligue 1') return 0.10;
+  if (leagueName === 'Primeira Liga' || leagueName === 'Eredivisie') return 0.07;
+  if (leagueName === 'Bundesliga') return 0.04;
+  return 0;
+}
+
 export function goToSeason() {
   const se = buildSeasonEvent();
   renderSeasonResult(se, buildSeasonChips(se), buildBallonEvent(se.goals, se.trophies.length));
@@ -13,20 +40,41 @@ export function buildSeasonEvent() {
   const ovr = calcOvr();
   const tier = state.G.clubTier;
   const prestige = state.G.club.prestige;
-  
-  // Dramatically reduce trophy chances for low OVR players
-  let ovrImpact = 1.0;
-  if (ovr < 60) ovrImpact = 0.1;
-  else if (ovr < 65) ovrImpact = 0.3;
-  else if (ovr < 70) ovrImpact = 0.6;
-  else if (ovr < 75) ovrImpact = 0.8;
-  
-  const baseWinChance = Math.max(0.008, Math.pow(Math.max(0, ovr - 72) / 100, 2.25)) + (prestige / 900);
-  const winChance = baseWinChance * ovrImpact;
+  const leagueName = state.G.club?.league || 'League';
+  const domesticCupName = getDomesticCupName(leagueName);
 
-  const leagueWon = Math.random() < Math.max(0.01, winChance * (0.85 + tier * 0.04));
-  const cupWon    = Math.random() < Math.max(0.03, winChance * 0.30);
-  const clWon     = tier>=5 && Math.random() < Math.max(0.004, (ovr-82)/260 * (prestige/120)) * ovrImpact;
+  const ovrCurve = clamp((ovr - 56) / 38, 0, 1);
+  const prestigeCurve = clamp((prestige - 25) / 75, 0, 1);
+  const playerImpact = clamp(0.55 + ovrCurve * 0.65, 0.55, 1.2);
+  const clubStrength = (ovrCurve * 0.42 + prestigeCurve * 0.58) * playerImpact;
+
+  const leagueDifficulty = getLeagueDifficulty(leagueName);
+  const tierBonus = (tier - 1) * 0.012;
+  const dominanceBoost = getDomesticDominanceBoost(leagueName, prestige);
+
+  const leagueWonChance = clamp(
+    0.02 + (clubStrength * 0.52) / leagueDifficulty + tierBonus + dominanceBoost,
+    0.02,
+    0.80,
+  );
+
+  const cupVariance = 0.90 + Math.random() * 0.25;
+  const cupWonChance = clamp(
+    0.04 + (clubStrength * 0.28 * cupVariance) / leagueDifficulty + dominanceBoost * 0.35,
+    0.04,
+    0.52,
+  );
+
+  const europeanStrength =
+    clamp((ovr - 74) / 22, 0, 1) * 0.55 +
+    clamp((prestige - 70) / 30, 0, 1) * 0.45;
+  const clWonChance = tier >= 5
+    ? clamp(0.008 + europeanStrength * 0.17 * playerImpact, 0.008, 0.30)
+    : 0;
+
+  const leagueWon = Math.random() < leagueWonChance;
+  const cupWon = Math.random() < cupWonChance;
+  const clWon = tier >= 5 && Math.random() < clWonChance;
   const potyWon   = ovr>=90 && Math.random()<0.07;
   const gbWon     = state.G.pos==='striker' && ovr>=89 && Math.random()<0.08;
   const csWon     = state.G.pos==='goalkeeper' && ovr>=88 && Math.random()<0.10;
@@ -34,8 +82,6 @@ export function buildSeasonEvent() {
 
   const trophies = [];
   let text = 'The season is over. ';
-  const leagueName = state.G.club?.league || 'League';
-  const domesticCupName = getDomesticCupName(leagueName);
 
   if (leagueWon && tier>=1) {
     const tk = `league:${leagueName}`;

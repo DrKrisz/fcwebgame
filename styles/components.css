@@ -71,8 +71,12 @@
 .stat-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px 8px;text-align:center;position:relative;overflow:hidden;}
 .stat-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--sc,var(--gold));transform:scaleX(var(--sp,0));transform-origin:left;transition:transform .6s ease;}
 .stat-name{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:rgba(245,240,232,.4);margin-bottom:5px;}
+.stat-val-row{display:flex;align-items:flex-end;justify-content:center;gap:6px;}
 .stat-val{font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:var(--sc,var(--cream));}
-.stat-trend{font-size:10px;margin-top:2px;min-height:14px;}
+.stat-val-feedback{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;line-height:1;min-width:18px;text-align:left;}
+.stat-val-feedback-up{color:var(--green);} .stat-val-feedback-dn{color:#f87171;}
+.stat-val-feedback-fadeout{opacity:0;transform:translateY(-2px);transition:opacity .18s ease, transform .18s ease;}
+.stat-trend{font-size:10px;margin-top:2px;min-height:0;height:0;}
 .trend-up{color:var(--green);} .trend-dn{color:#f87171;}
 
 /* BALLON / TROPHIES */
@@ -82,6 +86,11 @@
 .hon-title-space{margin-bottom:10px;}
 .trophies-inner{display:flex;flex-wrap:wrap;gap:6px;min-height:24px;align-items:center;}
 .trophy-chip{background:rgba(212,160,23,.12);border:1px solid rgba(212,160,23,.28);border-radius:20px;padding:3px 9px;font-size:11px;color:var(--gold-l);font-weight:600;animation:popIn .3s ease;}
+.trophy-group{display:flex;flex-direction:column;gap:0;}
+.trophy-group-header{cursor:pointer;user-select:none;border-color:rgba(212,160,23,.45);background:rgba(212,160,23,.15);transition:all .2s;}
+.trophy-group-header:hover{background:rgba(212,160,23,.22);border-color:var(--gold);}
+.trophy-group-arrow{display:inline-block;transition:transform .2s ease;color:var(--gold);}
+.trophy-subitem{background:rgba(212,160,23,.08);border-color:rgba(212,160,23,.18);animation:none;}
 .no-trophy{font-size:12px;color:rgba(245,240,232,.22);font-style:italic;}
 .ballon-display{display:flex;align-items:center;gap:8px;}
 .ballon-rank{font-family:'Bebas Neue',sans-serif;font-size:36px;line-height:1;}
@@ -125,6 +134,18 @@
 .ec-green{--ec:#4ade80;}
 .ec-red{--ec:#f87171;}
 
+.preseason-box{display:flex;flex-direction:column;gap:12px;}
+.preseason-table-wrap{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:10px 12px;}
+.preseason-table-title{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:8px;}
+.preseason-table{width:100%;border-collapse:collapse;font-size:12px;}
+.preseason-table th{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,240,232,.45);text-align:left;padding:6px;border-bottom:1px solid rgba(255,255,255,.1);}
+.preseason-table td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--cream);}
+.preseason-table tbody tr:last-child td{border-bottom:none;}
+.preseason-q-wrap{background:rgba(212,160,23,.06);border:1px solid rgba(212,160,23,.18);border-radius:6px;padding:12px;}
+.preseason-q-head{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;}
+.preseason-q-text{font-size:14px;line-height:1.55;color:var(--cream);margin-bottom:10px;}
+.preseason-notes{display:flex;flex-direction:column;gap:4px;font-size:12px;color:rgba(245,240,232,.72);}
+
 /* TRANSFER CARDS */
 .transfer-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px;}
 .club-offer-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:14px;cursor:pointer;transition:all .2s;position:relative;}
@@ -145,6 +166,27 @@
 
 .btn-keep-playing{background:rgba(74,222,128,.2);border:1px solid rgba(74,222,128,.4);color:var(--cream);}
 .btn-keep-playing:hover{background:rgba(74,222,128,.3);}
+
+.market-contract-bar{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 12px;font-size:12px;color:var(--cream);margin-bottom:10px;}
+.market-flash{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:var(--green);}
+.market-section-title{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin:10px 0 8px;}
+.market-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:12px;display:flex;flex-direction:column;gap:6px;}
+.market-card:hover{border-color:rgba(212,160,23,.45);background:rgba(212,160,23,.05);}
+.market-detail{font-size:12px;line-height:1.45;color:rgba(245,240,232,.72);min-height:34px;}
+.market-mini{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;color:rgba(245,240,232,.55);}
+.empty-market{grid-column:1/-1;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.18);border-radius:6px;padding:12px;font-size:12px;color:rgba(245,240,232,.5);text-align:center;}
+.market-actions{display:flex;gap:6px;flex-wrap:wrap;}
+.market-actions .btn-accept,.market-actions .btn-decline{margin-top:0;flex:1;min-width:130px;}
+.market-mode-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:8px;}
+.market-mode-btn{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:9px 10px;display:flex;flex-direction:column;gap:4px;color:var(--cream);cursor:pointer;transition:all .2s;text-align:left;}
+.market-mode-btn:hover{border-color:rgba(212,160,23,.45);background:rgba(212,160,23,.05);}
+.market-mode-btn.active{border-color:var(--gold);background:rgba(212,160,23,.12);}
+.market-mode-name{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--gold-l);}
+.market-mode-meta{font-size:11px;color:rgba(245,240,232,.65);}
+.market-detail-panel{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:11px 12px;margin-top:8px;margin-bottom:12px;}
+.market-detail-title{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.04em;color:var(--gold);margin-bottom:8px;}
+.market-detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 12px;font-size:12px;color:rgba(245,240,232,.78);margin-bottom:8px;}
+.market-detail-text{font-size:12px;line-height:1.5;color:rgba(245,240,232,.66);margin-bottom:8px;}
 
 /* SEASON RESULTS */
 .season-results{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:12px;animation:slideIn .35s ease;}

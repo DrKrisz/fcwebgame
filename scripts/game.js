@@ -129,11 +129,23 @@ export function startGame() {
       nationalCaps: 0,
       nationalGoals: 0,
       nationalTrophies: [],
+      managerConnections: { [startClub.name]: 62 },
     };
 
     state.seasonAction = 1;
     state.seasonActionsTotal = 10;
     state.actionLocked = false;
+    state.pendingContract = null;
+    state.pendingTransfer = null;
+    state.marketBoard = null;
+    state.marketApplications = [];
+    state.marketFeedbackQueue = [];
+    state.marketLastResponseSeason = null;
+    state.marketUi = {
+      incomingIndex: null,
+      targetIndex: null,
+      applyMode: 'balanced',
+    };
 
     showScreen('game');
     renderUI();
